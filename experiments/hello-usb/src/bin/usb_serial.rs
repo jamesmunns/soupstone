@@ -4,7 +4,15 @@
 
 use core::mem;
 
+#[cfg(feature = "use-defmt")]
 use defmt::{info, panic};
+
+#[cfg(feature = "use-defmt")]
+use {defmt_rtt as _, panic_probe as _};
+
+#[cfg(feature = "small")]
+use panic_reset as _;
+
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_nrf::usb::vbus_detect::{HardwareVbusDetect, VbusDetect};
@@ -13,7 +21,6 @@ use embassy_nrf::{bind_interrupts, pac, peripherals, usb};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
 use embassy_usb::{Builder, Config};
-use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
     USBD => usb::InterruptHandler<peripherals::USBD>;
@@ -25,6 +32,7 @@ async fn main(_spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
     let clock: pac::CLOCK = unsafe { mem::transmute(()) };
 
+    #[cfg(feature = "use-defmt")]
     info!("Enabling ext hfosc...");
     clock.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
     while clock.events_hfclkstarted.read().bits() != 1 {}
@@ -80,8 +88,10 @@ async fn main(_spawner: Spawner) {
     let echo_fut = async {
         loop {
             class.wait_connection().await;
+            #[cfg(feature = "use-defmt")]
             info!("Connected");
             let _ = echo(&mut class).await;
+            #[cfg(feature = "use-defmt")]
             info!("Disconnected");
         }
     };
@@ -109,6 +119,7 @@ async fn echo<'d, T: Instance + 'd, P: VbusDetect + 'd>(
     loop {
         let n = class.read_packet(&mut buf).await?;
         let data = &buf[..n];
+        #[cfg(feature = "use-defmt")]
         info!("data: {:x}", data);
         class.write_packet(data).await?;
     }
