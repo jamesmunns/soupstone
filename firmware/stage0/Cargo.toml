@@ -39,12 +39,20 @@ rev = "18fe398673f55b07159d01a230910bb9689c1525"
 features = ["defmt", "msos-descriptor",]
 # optional = true
 
+[dependencies.cortex-m]
+version = "0.7.6"
+features = ["critical-section-single-core", "inline-asm"]
+
+[dependencies.stage0-icd]
+path = "../../shared/stage0-icd"
+features = ["use-defmt"]
+
 [dependencies]
 defmt = "0.3"
 defmt-rtt = "0.4"
-cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
+postcard = "1.0"
 
 # cargo build/run
 [profile.dev]
