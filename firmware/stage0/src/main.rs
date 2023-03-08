@@ -59,12 +59,16 @@ impl<const N: usize> Ram<N> {
 
     pub fn contains(&'static self, addr: usize, len: usize) -> bool {
         let (start, end) = self.start_end();
-        (addr >= start) && (addr.saturating_add(len) <= end)
+        let range_end = match addr.checked_add(len) {
+            Some(e) => e,
+            None => return false,
+        };
+        (addr >= start) && (range_end <= end)
     }
 
     pub fn start_end(&'static self) -> (usize, usize) {
         let start = self.as_ptr() as usize;
-        let end = start.saturating_add(N);
+        let end = start.checked_add(N).unwrap();
         (start, end)
     }
 
