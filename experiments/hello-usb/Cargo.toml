@@ -129,5 +129,5 @@ incremental = false
 # NOTE disabled to work around issue rust-lang/rust#90357
 # the bug results in log messages not having location information
 # (the line printed below the log message that contains the file-line location)
-# lto = 'fat'
-opt-level = 3 # <-
+lto = 'fat'
+opt-level = 'z' # <-
