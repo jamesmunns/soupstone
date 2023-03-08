@@ -4,7 +4,7 @@
 
 use core::{
     cell::UnsafeCell,
-    mem::{self, MaybeUninit},
+    mem::{self, MaybeUninit}, sync::atomic::{compiler_fence, Ordering},
 };
 
 use cortex_m::singleton;
@@ -24,7 +24,7 @@ use embassy_usb::{
     Builder, Config,
 };
 use postcard::accumulator::{CobsAccumulator, FeedResult};
-use stage0_icd::Request;
+use stage0_icd::{Request, Response, Error as IcdError};
 use {defmt_rtt as _, panic_probe as _};
 
 const SCRATCH_SIZE: usize = 224 * 1024;
@@ -55,6 +55,75 @@ impl<const N: usize> Ram<N> {
         let p: *mut UnsafeCell<[u8; N]> = self.inner.as_ptr().cast_mut();
         let p: *mut u8 = p.cast();
         p
+    }
+
+    pub fn contains(&'static self, addr: usize, len: usize) -> bool {
+        let (start, end) = self.start_end();
+        (addr >= start) && (addr.saturating_add(len) <= end)
+    }
+
+    pub fn start_end(&'static self) -> (usize, usize) {
+        let start = self.as_ptr() as usize;
+        let end = start.saturating_add(N);
+        (start, end)
+    }
+
+    pub fn read_to<'a>(&'static self, start: usize, buf: &'a mut [u8]) -> Result<&'a mut [u8], IcdError> {
+        let (real_start, real_end) = self.start_end();
+        if !self.contains(start, buf.len()) {
+            return Err(IcdError::AddressOutOfRange {
+                request: start,
+                len: buf.len(),
+                min: real_start,
+                max: real_end,
+            });
+        }
+
+        unsafe {
+            let offset = start - real_start;
+            let len = buf.len();
+            compiler_fence(Ordering::SeqCst);
+
+            // TODO: Do we need volatile here?
+            core::ptr::copy_nonoverlapping(
+                self.as_ptr().add(offset).cast_const(),
+                buf.as_mut_ptr(),
+                len,
+            );
+
+            compiler_fence(Ordering::SeqCst);
+        }
+
+        Ok(buf)
+    }
+
+    pub fn write_from(&'static self, start: usize, buf: &[u8]) -> Result<(), IcdError> {
+        let (real_start, real_end) = self.start_end();
+        if !self.contains(start, buf.len()) {
+            return Err(IcdError::AddressOutOfRange {
+                request: start,
+                len: buf.len(),
+                min: real_start,
+                max: real_end,
+            });
+        }
+
+        unsafe {
+            let offset = start - real_start;
+            let len = buf.len();
+            compiler_fence(Ordering::SeqCst);
+
+            // TODO: Do we need volatile here?
+            core::ptr::copy_nonoverlapping(
+                buf.as_ptr(),
+                self.as_ptr().add(offset),
+                len,
+            );
+
+            compiler_fence(Ordering::SeqCst);
+        }
+
+        Ok(())
     }
 }
 
@@ -157,25 +226,68 @@ async fn acc<'d, 'acc, T: Instance + 'd, P: VbusDetect + 'd>(
     class: &mut CdcAcmClass<'d, Driver<'d, T, P>>,
 ) -> Result<(), Disconnected> {
     let mut buf = [0; 64];
+    let mut outbuf = [0u8; 512];
+
     let mut acc = CobsAccumulator::<ACC_SIZE>::new();
     loop {
         let n = class.read_packet(&mut buf).await?;
         let mut window = &buf[..n];
 
         'cobs: while !window.is_empty() {
-            window = match acc.feed_ref::<Request<'_>>(&window) {
-                FeedResult::Consumed => break 'cobs,
-                FeedResult::OverFull(new_wind) => new_wind,
-                FeedResult::DeserError(new_wind) => new_wind,
-                FeedResult::Success { data, remaining } => {
-                    // Do something with `data: MyData` here.
+            use FeedResult::*;
 
-                    defmt::debug!("{:?}", data);
+            window = match acc.feed_ref::<Request<'_>>(&window) {
+                Consumed => break 'cobs,
+                OverFull(new_wind) | DeserError(new_wind) => new_wind,
+                Success { data, remaining } => {
+                    let resp = req_handler(data, &mut outbuf);
+
+                    for ch in resp.chunks(64) {
+                        class.write_packet(ch).await?;
+                    }
 
                     remaining
                 }
             };
         }
+    }
+}
+
+fn req_handler<'a>(req: Request<'_>, outbuf: &'a mut [u8]) -> &'a [u8] {
+    let resp: Result<Response<'_>, IcdError> = match req {
+        Request::PeekU8 { addr } => {
+            let mut buf = [0u8; 1];
+            SCRATCH.read_to(addr, &mut buf)
+                .map(|buf| {
+                    Response::PeekU8 { addr, val: buf[0] }
+                })
+        },
+        Request::PokeU8 { addr, val } => {
+            let buf = [val];
+            SCRATCH.write_from(addr, &buf)
+                .map(|()| {
+                    Response::Poked { addr }
+                })
+        },
+
+        // Unimplemented
+        // Request::PeekU16 { addr } => todo!(),
+        // Request::PeekU32 { addr } => todo!(),
+        // Request::PeekBytes { addr, len } => todo!(),
+        // Request::PokeU16 { addr, val } => todo!(),
+        // Request::PokeU32 { addr, val } => todo!(),
+        // Request::PokeBytes { addr, val } => todo!(),
+        // Request::ClearMagic => todo!(),
+        // Request::Reboot => todo!(),
+        _ => todo!()
+    };
+
+    match postcard::to_slice_cobs(&resp, outbuf) {
+        Ok(ser) => ser,
+        Err(_) => {
+            defmt::error!("Serialization went bad.");
+            &[0x00]
+        },
     }
 }
 

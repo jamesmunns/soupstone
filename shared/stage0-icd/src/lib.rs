@@ -52,6 +52,7 @@ pub enum Request<'a> {
 pub enum Error {
     AddressOutOfRange {
         request: usize,
+        len: usize,
         min: usize,
         max: usize,
     },
