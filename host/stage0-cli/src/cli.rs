@@ -1,6 +1,5 @@
 use std::{num::ParseIntError, str::FromStr};
 use clap::{Args, Parser, Subcommand};
-// use phm::Machine;
 
 #[derive(Debug)]
 pub struct Address(pub u32);
@@ -16,115 +15,34 @@ pub enum Stage0 {
     Poke(Poke),
 }
 
-#[derive(Parser, Debug)]
+#[derive(Args, Debug)]
 pub struct Peek {
-    #[clap(subcommand)]
-    pub command: PeekCommand,
+    /// The address to read from.
+    #[clap(short = 'a')]
+    pub address: Address,
+
+    /// How many bytes to read
+    #[clap(short = 'l', long = "count")]
+    pub count: usize,
+
+    /// Output File. Prints to stdout if not provided
+    #[clap(short = 'f', long = "file")]
+    pub file: Option<String>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Args, Debug)]
 pub struct Poke {
-    #[clap(subcommand)]
-    pub command: PokeCommand,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum PeekCommand {
-    /// Write bytes to the given address
-    #[clap(name = "u8")]
-    PeekU8(PeekU8),
-}
-
-#[derive(Subcommand, Debug)]
-pub enum PokeCommand {
-    /// Write bytes
-    #[clap(name = "u8")]
-    PokeU8(PokeU8),
-}
-
-#[derive(Args, Debug)]
-pub struct PeekU8 {
     /// The address to write to.
     #[clap(short = 'a')]
     pub address: Address,
-}
-
-#[derive(Args, Debug)]
-pub struct PokeU8 {
-    /// The address to write to.
-    #[clap(short = 'a')]
-    pub address: Address,
-    /// Bytes to write to the address. Should be given as a comma-separated list of hex values. For example: "0xA0,0xAB,0x11".
+    /// Bytes to write to the address. For example: "0xA0,0xAB,0x11".
     #[clap(short = 'b', long = "write")]
-    pub val: WriteBytes,
+    pub val: Option<WriteBytes>,
+
+    /// Input file
+    #[clap(short = 'f', long = "file")]
+    pub file: Option<String>,
 }
-
-// #[derive(Args, Debug)]
-// struct WriteRead {
-//     /// The address to write to. Should be given as a hex value. For example: "0xA4".
-//     #[clap(short = 'a')]
-//     address: Address,
-//     #[clap(short = 'b', long = "bytes")]
-//     write_bytes: WriteBytes,
-//     /// Bytes to write to the address. Should be given as a comma-separated list of hex values. For example: "0xA0,0xAB,0x11".
-//     #[clap(long = "read-ct")]
-//     read_count: usize,
-// }
-
-// #[derive(Args, Debug)]
-// struct SpiWrite {
-//     /// Bytes to write over SPI. Should be given as a comma-separated list of hex values. For example: "0xA0,0xAB,0x11".
-//     #[clap(short = 'b', long = "write")]
-//     write_bytes: WriteBytes,
-// }
-
-// #[derive(Args, Debug)]
-// struct SpiTransfer {
-//     /// Bytes to transfer over SPI. Should be given as a comma-separated list of hex values. For example: "0xA0,0xAB,0x11".
-//     #[clap(short = 'b', long = "write")]
-//     write_bytes: WriteBytes,
-// }
-
-// impl Stage0 {
-//     pub fn run(&self, machine: &mut Machine) -> Result<String, phm::Error> {
-//         match self {
-//             Stage0::I2C(cmd) => match &cmd.command {
-//                 I2CCommand::I2CWrite(args) => embedded_hal::blocking::i2c::Write::write(
-//                     machine,
-//                     args.address.0,
-//                     &args.write_bytes.0,
-//                 )
-//                 .map(|_| "".into()),
-//                 I2CCommand::I2CRead(args) => {
-//                     let mut buffer = vec![0u8; args.read_count];
-//                     embedded_hal::blocking::i2c::Read::read(machine, args.address.0, &mut buffer)?;
-//                     Ok(format!("{:02x?}", &buffer))
-//                 }
-//                 I2CCommand::WriteRead(args) => {
-//                     let mut buffer = vec![0u8; args.read_count];
-//                     embedded_hal::blocking::i2c::WriteRead::write_read(
-//                         machine,
-//                         args.address.0,
-//                         &args.write_bytes.0,
-//                         &mut buffer,
-//                     )?;
-//                     Ok(format!("{:02x?}", &buffer))
-//                 }
-//             },
-//             Stage0::Spi(cmd) => match &cmd.command {
-//                 SpiCommand::SpiWrite(args) => {
-//                     embedded_hal::blocking::spi::Write::write(machine, &args.write_bytes.0)
-//                         .map(|_| "".into())
-//                 }
-//                 SpiCommand::SpiTransfer(args) => {
-//                     let mut buffer = args.write_bytes.0.clone();
-//                     embedded_hal::blocking::spi::Transfer::transfer(machine, &mut buffer)
-//                         .map(|bytes| format!("{:02x?}", &bytes))
-//                 }
-//             },
-//         }
-//     }
-// }
 
 impl FromStr for WriteBytes {
     type Err = ParseIntError;

@@ -42,6 +42,14 @@ impl<'a> Managed<'a> {
             Managed::Owned(s) => s.as_slice(),
         }
     }
+
+    #[cfg(feature = "use-std")]
+    pub fn to_owned(&'a self) -> Managed<'static> {
+        match self {
+            Managed::Borrowed(b) => Managed::Owned(b.to_vec()),
+            Managed::Owned(s) => Managed::Owned(s.clone()),
+        }
+    }
 }
 
 // Optional impls

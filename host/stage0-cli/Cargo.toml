@@ -21,3 +21,4 @@ postcard = { version = "1.0", features = ["use-std"] }
 
 [dependencies.stage0-icd]
 path = "../../shared/stage0-icd"
+features = ["use-std"]

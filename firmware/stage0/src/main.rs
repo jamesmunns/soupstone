@@ -24,7 +24,7 @@ use embassy_usb::{
     Builder, Config,
 };
 use postcard::accumulator::{CobsAccumulator, FeedResult};
-use stage0_icd::{Request, Response, Error as IcdError};
+use stage0_icd::{Request, Response, Error as IcdError, managedbuf::Managed, PeekBytes, Poked};
 use {defmt_rtt as _, panic_probe as _};
 
 const SCRATCH_SIZE: usize = 224 * 1024;
@@ -57,13 +57,23 @@ impl<const N: usize> Ram<N> {
         p
     }
 
-    pub fn contains(&'static self, addr: usize, len: usize) -> bool {
+    pub fn contains(&'static self, addr: usize, len: usize) -> Result<*mut u8, IcdError> {
         let (start, end) = self.start_end();
-        let range_end = match addr.checked_add(len) {
-            Some(e) => e,
-            None => return false,
+        let contains = match addr.checked_add(len) {
+            Some(range_end) => (addr >= start) && (range_end <= end),
+            None => false,
         };
-        (addr >= start) && (range_end <= end)
+        if contains {
+            let offset = addr - start;
+            Ok(unsafe { self.as_ptr().add(offset) })
+        } else {
+            Err(IcdError::AddressOutOfRange {
+                request: addr,
+                len,
+                min: start,
+                max: end,
+            })
+        }
     }
 
     pub fn start_end(&'static self) -> (usize, usize) {
@@ -73,24 +83,15 @@ impl<const N: usize> Ram<N> {
     }
 
     pub fn read_to<'a>(&'static self, start: usize, buf: &'a mut [u8]) -> Result<&'a mut [u8], IcdError> {
-        let (real_start, real_end) = self.start_end();
-        if !self.contains(start, buf.len()) {
-            return Err(IcdError::AddressOutOfRange {
-                request: start,
-                len: buf.len(),
-                min: real_start,
-                max: real_end,
-            });
-        }
+        let ptr = self.contains(start, buf.len())?;
 
         unsafe {
-            let offset = start - real_start;
             let len = buf.len();
             compiler_fence(Ordering::SeqCst);
 
             // TODO: Do we need volatile here?
             core::ptr::copy_nonoverlapping(
-                self.as_ptr().add(offset).cast_const(),
+                ptr.cast_const(),
                 buf.as_mut_ptr(),
                 len,
             );
@@ -102,25 +103,16 @@ impl<const N: usize> Ram<N> {
     }
 
     pub fn write_from(&'static self, start: usize, buf: &[u8]) -> Result<(), IcdError> {
-        let (real_start, real_end) = self.start_end();
-        if !self.contains(start, buf.len()) {
-            return Err(IcdError::AddressOutOfRange {
-                request: start,
-                len: buf.len(),
-                min: real_start,
-                max: real_end,
-            });
-        }
+        let ptr = self.contains(start, buf.len())?;
 
         unsafe {
-            let offset = start - real_start;
             let len = buf.len();
             compiler_fence(Ordering::SeqCst);
 
             // TODO: Do we need volatile here?
             core::ptr::copy_nonoverlapping(
                 buf.as_ptr(),
-                self.as_ptr().add(offset),
+                ptr,
                 len,
             );
 
@@ -140,6 +132,9 @@ bind_interrupts!(struct Irqs {
 async fn main(_spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
     let clock: pac::CLOCK = unsafe { mem::transmute(()) };
+    let nvmc: pac::NVMC = unsafe { mem::transmute(()) };
+    nvmc.icachecnf.write(|w| w.cacheen().set_bit());
+    cortex_m::asm::isb();
 
     info!("Enabling ext hfosc...");
     clock.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
@@ -258,29 +253,34 @@ async fn acc<'d, 'acc, T: Instance + 'd, P: VbusDetect + 'd>(
 }
 
 fn req_handler<'a>(req: Request<'_>, outbuf: &'a mut [u8]) -> &'a [u8] {
+    let mut membuf = [0u8; 256];
+
     let resp: Result<Response<'_>, IcdError> = match req {
-        Request::PeekU8 { addr } => {
-            let mut buf = [0u8; 1];
-            SCRATCH.read_to(addr, &mut buf)
-                .map(|buf| {
-                    Response::PeekU8 { addr, val: buf[0] }
+        Request::PeekBytes { addr, len } => {
+            if len > membuf.len() {
+                Err(IcdError::RangeTooLarge {
+                    request: len,
+                    max: membuf.len(),
                 })
+            } else {
+                SCRATCH.read_to(addr, &mut membuf[..len])
+                    .map(|buf| {
+                        Response::PeekBytes(PeekBytes { addr, val: Managed::from_borrowed(buf) })
+                    })
+            }
         },
-        Request::PokeU8 { addr, val } => {
-            let buf = [val];
-            SCRATCH.write_from(addr, &buf)
+        Request::PokeBytes { addr, val } => {
+            SCRATCH.write_from(addr, val.as_slice())
                 .map(|()| {
-                    Response::Poked { addr }
+                    Response::Poked(Poked { addr })
                 })
         },
 
         // Unimplemented
         // Request::PeekU16 { addr } => todo!(),
         // Request::PeekU32 { addr } => todo!(),
-        // Request::PeekBytes { addr, len } => todo!(),
         // Request::PokeU16 { addr, val } => todo!(),
         // Request::PokeU32 { addr, val } => todo!(),
-        // Request::PokeBytes { addr, val } => todo!(),
         // Request::ClearMagic => todo!(),
         // Request::Reboot => todo!(),
         _ => todo!()

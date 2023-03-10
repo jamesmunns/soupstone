@@ -9,33 +9,12 @@ pub mod managedbuf;
 #[cfg_attr(feature = "use-defmt", derive(defmt::Format))]
 pub enum Request<'a> {
     // Peek
-    PeekU8 {
-        addr: usize,
-    },
-    PeekU16 {
-        addr: usize,
-    },
-    PeekU32 {
-        addr: usize,
-    },
     PeekBytes {
         addr: usize,
         len: usize,
     },
 
     // Poke
-    PokeU8 {
-        addr: usize,
-        val: u8,
-    },
-    PokeU16 {
-        addr: usize,
-        val: u16,
-    },
-    PokeU32 {
-        addr: usize,
-        val: u32,
-    },
     PokeBytes {
         addr: usize,
         #[serde(borrow)]
@@ -56,30 +35,49 @@ pub enum Error {
         min: usize,
         max: usize,
     },
+    RangeTooLarge {
+        request: usize,
+        max: usize,
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "use-defmt", derive(defmt::Format))]
+pub struct PeekBytes<'a> {
+    pub addr: usize,
+    #[serde(borrow)]
+    pub val: Managed<'a>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "use-defmt", derive(defmt::Format))]
+pub struct Poked {
+    pub addr: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "use-defmt", derive(defmt::Format))]
 pub enum Response<'a> {
-    PeekU8 {
-        addr: usize,
-        val: u8,
-    },
-    PeekU16 {
-        addr: usize,
-        val: u16,
-    },
-    PeekU32 {
-        addr: usize,
-        val: u32,
-    },
-    PeekBytes {
-        addr: usize,
-        #[serde(borrow)]
-        val: Managed<'a>,
-    },
-    Poked {
-        addr: usize,
-    },
+    #[serde(borrow)]
+    PeekBytes(PeekBytes<'a>),
+    Poked(Poked),
     MagicCleared,
+}
+
+#[cfg(feature = "use-std")]
+impl<'a> PeekBytes<'a> {
+    pub fn to_owned(&self) -> PeekBytes<'static> {
+        PeekBytes { addr: self.addr, val: self.val.to_owned() }
+    }
+}
+
+#[cfg(feature = "use-std")]
+impl<'a> Response<'a> {
+    pub fn to_owned(&self) -> Response<'static> {
+        match self {
+            Response::PeekBytes(pb) => Response::PeekBytes(pb.to_owned()),
+            Response::Poked(Poked { addr }) => Response::Poked(Poked { addr: *addr }),
+            Response::MagicCleared => Response::MagicCleared,
+        }
+    }
 }
