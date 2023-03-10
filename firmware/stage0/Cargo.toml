@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "hello-usb"
+name = "stage0"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
 
@@ -9,18 +9,6 @@ default = ["nightly"]
 nightly = [
     "embassy-executor/nightly",
     "embassy-nrf/nightly",
-
-    ## Always enabled
-    # "embassy-usb",
-
-    ## Removed:
-    # "embassy-net/nightly",
-    # "embassy-nrf/unstable-traits",
-    # "embedded-io/async",
-    # "embassy-net",
-    # "embassy-lora",
-    # "lorawan-device",
-    # "lorawan",
 ]
 
 [dependencies.embassy-futures]
@@ -51,56 +39,20 @@ rev = "18fe398673f55b07159d01a230910bb9689c1525"
 features = ["defmt", "msos-descriptor",]
 # optional = true
 
-## Probably not needed, but kept for ease
+[dependencies.cortex-m]
+version = "0.7.6"
+features = ["critical-section-single-core", "inline-asm"]
 
-# [dependencies.embassy-net]
-# version = "0.1.0"
-# # path = "../../embassy-net"
-# git = "https://github.com/embassy-rs/embassy"
-# rev = "18fe398673f55b07159d01a230910bb9689c1525"
-# features = ["defmt", "tcp", "dhcpv4", "medium-ethernet"]
-# optional = true
-
-# [dependencies.embassy-lora]
-# version = "0.1.0"
-# # path = "../../embassy-lora"
-# git = "https://github.com/embassy-rs/embassy"
-# rev = "18fe398673f55b07159d01a230910bb9689c1525"
-# features = ["sx126x", "time", "defmt"]
-# optional = true
-
-# [dependencies.embassy-time]
-# version = "0.1.0"
-# # path = "../../embassy-time"
-# git = "https://github.com/embassy-rs/embassy"
-# rev = "18fe398673f55b07159d01a230910bb9689c1525"
-# features = ["defmt", "defmt-timestamp-uptime"]
-
-# [dependencies.embassy-sync]
-# version = "0.1.0"
-# # path = "../../embassy-sync"
-# git = "https://github.com/embassy-rs/embassy"
-# rev = "18fe398673f55b07159d01a230910bb9689c1525"
-# features = ["defmt"]
+[dependencies.stage0-icd]
+path = "../../shared/stage0-icd"
+features = ["use-defmt"]
 
 [dependencies]
 defmt = "0.3"
 defmt-rtt = "0.4"
-cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-
-## Probably not needed, but kept for ease
-
-# static_cell = "1.0"
-# futures = { version = "0.3.17", default-features = false, features = ["async-await"] }
-# rand = { version = "0.8.4", default-features = false }
-# embedded-storage = "0.3.0"
-# usbd-hid = "0.6.0"
-# serde = { version = "1.0.136", default-features = false }
-# embedded-io = "0.4.0"
-# lorawan-device = { version = "0.8.0", default-features = false, features = ["async"], optional = true }
-# lorawan = { version = "0.7.1", default-features = false, features = ["default-crypto"], optional = true }
+postcard = "1.0"
 
 # cargo build/run
 [profile.dev]
