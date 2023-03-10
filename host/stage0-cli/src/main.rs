@@ -18,6 +18,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     match cmd {
         Stage0::Peek(cmd) => peek(cmd, port.deref_mut()),
         Stage0::Poke(cmd) => poke(cmd, port.deref_mut()),
+        Stage0::Bootload(cmd) => {
+            send(Request::Bootload { addr: cmd.address.0 }, port.deref_mut())?;
+            println!("Sent bootload command.");
+            Ok(())
+        }
     }?;
 
     Ok(())

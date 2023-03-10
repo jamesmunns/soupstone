@@ -7,7 +7,7 @@ use core::{
     mem::{self, MaybeUninit}, sync::atomic::{compiler_fence, Ordering},
 };
 
-use cortex_m::singleton;
+use cortex_m::{singleton, interrupt, peripheral::SCB};
 use defmt::{info, panic};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
@@ -130,6 +130,27 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
+    let (magic_1, magic_2) = unsafe {
+        let m = MAGIC.as_ptr().cast::<u32>();
+        let ret = (m.read_unaligned(), m.add(1).read_unaligned());
+        m.write_unaligned(0);
+        m.add(1).write_unaligned(0);
+        ret
+    };
+
+    match (magic_1, magic_2) {
+        (0x0FACADE0, addr) => unsafe {
+            // bootload!
+            interrupt::disable();
+            let scb: SCB = mem::transmute(());
+            scb.vtor.write(addr);
+            cortex_m::asm::bootload(addr as *const u32);
+        }
+        _ => {
+            // Do nothing!
+        }
+    }
+
     let p = embassy_nrf::init(Default::default());
     let clock: pac::CLOCK = unsafe { mem::transmute(()) };
     let nvmc: pac::NVMC = unsafe { mem::transmute(()) };
@@ -140,19 +161,13 @@ async fn main(_spawner: Spawner) {
     clock.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
     while clock.events_hfclkstarted.read().bits() != 1 {}
 
-    // hehehe
-    // TODO: removeme
-    unsafe {
-        SCRATCH.as_ptr().write_bytes(0xFF, SCRATCH_SIZE);
-    }
-
     // Create the driver, from the HAL.
     let driver = Driver::new(p.USBD, Irqs, HardwareVbusDetect::new(Irqs));
 
     // Create embassy-usb Config
     let mut config = Config::new(0xc0de, 0xcafe);
-    config.manufacturer = Some("Soupstone Stage0");
-    config.product = Some("USB-serial example");
+    config.manufacturer = Some("OneVariable");
+    config.product = Some("Stage0 Loader");
     config.serial_number = Some("12345678");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
@@ -275,6 +290,19 @@ fn req_handler<'a>(req: Request<'_>, outbuf: &'a mut [u8]) -> &'a [u8] {
                     Response::Poked(Poked { addr })
                 })
         },
+        Request::Bootload { addr } => {
+            // Validation is for suckers.
+            let mut scratch = [0u8; 8];
+            scratch[..4].copy_from_slice(&0x0FACADE0u32.to_ne_bytes());
+            scratch[4..].copy_from_slice(&addr.to_ne_bytes());
+            unsafe {
+                MAGIC.as_ptr().copy_from_nonoverlapping(scratch.as_ptr(), 8);
+            }
+
+            // o7
+            interrupt::disable();
+            SCB::sys_reset();
+        }
 
         // Unimplemented
         // Request::PeekU16 { addr } => todo!(),

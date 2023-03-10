@@ -24,6 +24,9 @@ pub enum Request<'a> {
     // Other
     ClearMagic,
     Reboot,
+    Bootload {
+        addr: u32,
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

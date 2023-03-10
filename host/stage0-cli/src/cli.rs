@@ -1,5 +1,5 @@
 use std::{num::ParseIntError, str::FromStr};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser};
 
 #[derive(Debug)]
 pub struct Address(pub u32);
@@ -13,6 +13,8 @@ pub enum Stage0 {
     Peek(Peek),
     /// Poke
     Poke(Poke),
+    /// Bootload
+    Bootload(Bootload)
 }
 
 #[derive(Args, Debug)]
@@ -42,6 +44,13 @@ pub struct Poke {
     /// Input file
     #[clap(short = 'f', long = "file")]
     pub file: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct Bootload {
+    /// The address to write to.
+    #[clap(short = 'a')]
+    pub address: Address,
 }
 
 impl FromStr for WriteBytes {
