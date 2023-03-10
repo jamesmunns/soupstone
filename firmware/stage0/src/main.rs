@@ -141,7 +141,6 @@ async fn main(_spawner: Spawner) {
     match (magic_1, magic_2) {
         (0x0FACADE0, addr) => unsafe {
             // bootload!
-            interrupt::disable();
             let scb: SCB = mem::transmute(());
             scb.vtor.write(addr);
             cortex_m::asm::bootload(addr as *const u32);
