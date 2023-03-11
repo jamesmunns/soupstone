@@ -1,0 +1,24 @@
+[package]
+name = "stage0-cli"
+version = "1.0.0"
+description = ""
+repository = ""
+authors = [
+    "James Munns <james@onevariable.com>",
+]
+edition = "2021"
+readme = "README.md"
+
+categories = [
+    "embedded",
+]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serialport = "4.0.1"
+clap = { version = "3.0.14", features = ["derive"] }
+postcard = { version = "1.0", features = ["use-std"] }
+
+[dependencies.soup-icd]
+path = "../../shared/soup-icd"
+features = ["use-std"]
