@@ -8,7 +8,12 @@ use core::{
 };
 
 use cortex_m::{singleton, interrupt, peripheral::SCB};
-use defmt::{info, panic};
+
+#[cfg(feature = "use-defmt")]
+use {defmt_rtt as _, panic_probe as _};
+
+#[cfg(feature = "small")]
+use panic_reset as _;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_nrf::{
@@ -25,11 +30,27 @@ use embassy_usb::{
 };
 use postcard::accumulator::{CobsAccumulator, FeedResult};
 use stage0_icd::{Request, Response, Error as IcdError, managedbuf::Managed, PeekBytes, Poked};
-use {defmt_rtt as _, panic_probe as _};
 
 const SCRATCH_SIZE: usize = 224 * 1024;
 const MAGIC_SIZE: usize = 8;
 const ACC_SIZE: usize = 512;
+
+#[cfg(feature = "use-defmt")]
+macro_rules! s0log {
+    (trace, $($arg:expr),*) => { defmt::trace!($($arg),*) };
+    (info, $($arg:expr),*) => { defmt::info!($($arg),*) };
+    (debug, $($arg:expr),*) => { defmt::debug!($($arg),*) };
+    (error, $($arg:expr),*) => { defmt::error!($($arg),*) };
+    (panic, $($arg:expr),*) => { defmt::panic!($($arg),*) };
+}
+
+#[cfg(not(feature = "use-defmt"))]
+macro_rules! s0log {
+    (panic, $($arg:expr),*) => {
+        SCB::sys_reset();
+    };
+    ($level:ident, $($arg:expr),*) => {{ $( let _ = $arg; )* }}
+}
 
 #[link_section = ".scratch.SCRATCH"]
 #[used]
@@ -156,7 +177,7 @@ async fn main(_spawner: Spawner) {
     nvmc.icachecnf.write(|w| w.cacheen().set_bit());
     cortex_m::asm::isb();
 
-    info!("Enabling ext hfosc...");
+    s0log!(info, "Enabling ext hfosc...");
     clock.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
     while clock.events_hfclkstarted.read().bits() != 1 {}
 
@@ -213,9 +234,9 @@ async fn main(_spawner: Spawner) {
     let echo_fut = async {
         loop {
             class.wait_connection().await;
-            info!("Connected");
+            s0log!(info, "Connected");
             let _ = acc(&mut class).await;
-            info!("Disconnected");
+            s0log!(info, "Disconnected");
         }
     };
 
@@ -316,7 +337,7 @@ fn req_handler<'a>(req: Request<'_>, outbuf: &'a mut [u8]) -> &'a [u8] {
     match postcard::to_slice_cobs(&resp, outbuf) {
         Ok(ser) => ser,
         Err(_) => {
-            defmt::error!("Serialization went bad.");
+            s0log!(error, "Serialization went bad.");
             &[0x00]
         },
     }
