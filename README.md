@@ -10,7 +10,7 @@ cp ./demo.bin ../../host/stage0-cli/demo.bin
 
 # Flash the stage0 loader
 cd ../../firmware/stage0/
-cargo run --release
+cargo run --release --features=small
 
 # hit control-c, hit the reset button on the board
 # ...
