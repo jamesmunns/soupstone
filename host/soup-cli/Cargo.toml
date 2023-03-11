@@ -1,5 +1,5 @@
 [package]
-name = "stage0-cli"
+name = "soup-cli"
 version = "1.0.0"
 description = ""
 repository = ""
