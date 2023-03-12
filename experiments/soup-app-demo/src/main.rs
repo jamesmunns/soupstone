@@ -1,28 +1,35 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
-#![allow(unused_variables, unused_imports, unused_mut)]
 
 use core::mem;
 
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
-use embassy_futures::select::{select, Either};
-use embassy_nrf::gpio::{Output, Level, OutputDrive};
-use embassy_nrf::peripherals::P0_13;
-use embassy_nrf::usb::vbus_detect::{HardwareVbusDetect, VbusDetect};
-use embassy_nrf::usb::{Driver, Instance};
-use embassy_nrf::{bind_interrupts, pac, peripherals, usb};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
-use embassy_usb::driver::EndpointError;
-use embassy_usb::{Builder, Config};
+use embassy_nrf::{
+    bind_interrupts,
+    gpio::{Level, Output, OutputDrive},
+    pac,
+    peripherals::{self, USBD},
+    usb::{
+        self,
+        vbus_detect::HardwareVbusDetect,
+        Driver,
+    },
+};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_usb::{
+    class::cdc_acm::{CdcAcmClass, Receiver, Sender, State},
+    driver::EndpointError,
+    Builder, Config,
+};
+use embassy_sync::{mutex::Mutex, pipe::Pipe};
+use embassy_time::{Duration, Timer};
+
+use cortex_m::singleton;
 use panic_reset as _;
 use postcard::accumulator::{CobsAccumulator, FeedResult};
-use soup_icd::{ToSoup, FromSoup, Control};
-use embassy_time::{Duration, Timer};
-use embassy_sync::pipe::Pipe;
-use embassy_sync::mutex::Mutex;
+use soup_icd::{Control, FromSoup, Managed, ToSoup};
 
 bind_interrupts!(struct Irqs {
     USBD => usb::InterruptHandler<peripherals::USBD>;
@@ -30,13 +37,35 @@ bind_interrupts!(struct Irqs {
 });
 
 const ACC_SIZE: usize = 512;
-static STDOUT: Pipe<CriticalSectionRawMutex, 256> = Pipe::new();
+static STDOUT: Pipe<ThreadModeRawMutex, 256> = Pipe::new();
 
 #[embassy_executor::task]
 async fn run1() {
     loop {
         Timer::after(Duration::from_ticks(64000)).await;
         STDOUT.write(b"hello, world!\r\n").await;
+    }
+}
+
+type UsbSender = Sender<'static, Driver<'static, USBD, HardwareVbusDetect>>;
+type UsbReceiver = Receiver<'static, Driver<'static, USBD, HardwareVbusDetect>>;
+
+#[embassy_executor::task]
+async fn stdout(tx: &'static Mutex<ThreadModeRawMutex, UsbSender>) {
+    let mut scratch_in = [0u8; 32];
+    let mut scratch_out = [0u8; 64];
+
+    loop {
+        let n = STDOUT.read(&mut scratch_in).await;
+        if n == 0 {
+            continue;
+        }
+        let msg = FromSoup::Stdout(Managed::from_borrowed(&scratch_in[..n]));
+        if let Ok(sli) = postcard::to_slice_cobs(&msg, &mut scratch_out) {
+            let mut tx = tx.lock().await;
+            tx.wait_connection().await;
+            tx.write_packet(sli).await.ok();
+        }
     }
 }
 
@@ -47,7 +76,7 @@ async fn main(spawner: Spawner) {
     cortex_m::asm::delay(8_000_000);
 
     let clock: pac::CLOCK = unsafe { mem::transmute(()) };
-    let mut led = Output::new(p.P0_13, Level::Low, OutputDrive::Standard);
+    let _led = Output::new(p.P0_13, Level::Low, OutputDrive::Standard);
 
     // info!("Enabling ext hfosc...");
     clock.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
@@ -73,26 +102,28 @@ async fn main(spawner: Spawner) {
 
     // Create embassy-usb DeviceBuilder using the driver and config.
     // It needs some buffers for building the descriptors.
-    let mut device_descriptor = [0; 256];
-    let mut config_descriptor = [0; 256];
-    let mut bos_descriptor = [0; 256];
-    let mut msos_descriptor = [0; 256];
-    let mut control_buf = [0; 64];
+    //
+    // Use singletons to reduce stack usage.
+    let device_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
+    let config_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
+    let bos_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
+    let msos_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
+    let control_buf = singleton!(:[u8; 64] = [0; 64]).unwrap_or_else(welp);
 
-    let mut state = State::new();
+    let state = singleton!(:State = State::new()).unwrap();
 
     let mut builder = Builder::new(
         driver,
         config,
-        &mut device_descriptor,
-        &mut config_descriptor,
-        &mut bos_descriptor,
-        &mut msos_descriptor,
-        &mut control_buf,
+        device_descriptor,
+        config_descriptor,
+        bos_descriptor,
+        msos_descriptor,
+        control_buf,
     );
 
     // Create classes on the builder.
-    let mut class = CdcAcmClass::new(&mut builder, &mut state, 64);
+    let class = CdcAcmClass::new(&mut builder, state, 64);
 
     // Build the builder.
     let mut usb = builder.build();
@@ -100,17 +131,20 @@ async fn main(spawner: Spawner) {
     // Run the USB device.
     let usb_fut = usb.run();
 
+    let (tx, mut rx) = class.split();
+
+    let tx = &*singleton!(: Mutex<ThreadModeRawMutex, UsbSender> = Mutex::new(tx)).unwrap();
+
+    spawner.spawn(stdout(tx)).ok();
+    spawner.spawn(run1()).ok();
+
     // Do stuff with the class!
     let echo_fut = async {
         loop {
-            class.wait_connection().await;
-            // info!("Connected");
-            let _ = minimal(&mut class).await;
-            // info!("Disconnected");
+            rx.wait_connection().await;
+            let _ = minimal(&mut rx, tx).await;
         }
     };
-
-    spawner.spawn(run1()).ok();
 
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
@@ -128,50 +162,37 @@ impl From<EndpointError> for Disconnected {
     }
 }
 
-async fn minimal<'d, 'acc, T: Instance + 'd, P: VbusDetect + 'd>(
-    class: &mut CdcAcmClass<'d, Driver<'d, T, P>>,
+async fn minimal(
+    rx: &mut UsbReceiver,
+    tx: &Mutex<ThreadModeRawMutex, UsbSender>,
 ) -> Result<(), Disconnected> {
     let mut buf = [0; 64];
-    let mut stdout = [0; 32];
     let mut outbuf = [0u8; 512];
 
     let mut acc = CobsAccumulator::<ACC_SIZE>::new();
     loop {
-        match select(STDOUT.read(&mut stdout), class.read_packet(&mut buf)).await {
-            Either::First(out) => {
-                if out != 0 {
-                    if let Ok(sern) = postcard::to_slice_cobs(
-                        &FromSoup::Stdout(soup_icd::Managed::Borrowed(&stdout[..out])),
-                        &mut outbuf,
-                    ) {
-                        class.write_packet(sern).await?;
+        let n = rx.read_packet(&mut buf).await?;
+        let mut window = &buf[..n];
+
+        'cobs: while !window.is_empty() {
+            use FeedResult::*;
+
+            window = match acc.feed_ref::<ToSoup<'_>>(&window) {
+                Consumed => break 'cobs,
+                OverFull(new_wind) | DeserError(new_wind) => new_wind,
+                Success { data, remaining } => {
+                    let resp = req_handler(data, &mut outbuf);
+
+                    let mut tx = tx.lock().await;
+                    for ch in resp.chunks(64) {
+                        tx.wait_connection().await;
+                        tx.write_packet(ch).await?;
                     }
+
+                    remaining
                 }
-            },
-            Either::Second(read) => {
-                let n = read?;
-                let mut window = &buf[..n];
-
-                'cobs: while !window.is_empty() {
-                    use FeedResult::*;
-
-                    window = match acc.feed_ref::<ToSoup<'_>>(&window) {
-                        Consumed => break 'cobs,
-                        OverFull(new_wind) | DeserError(new_wind) => new_wind,
-                        Success { data, remaining } => {
-                            let resp = req_handler(data, &mut outbuf);
-
-                            for ch in resp.chunks(64) {
-                                class.write_packet(ch).await?;
-                            }
-
-                            remaining
-                        }
-                    };
-                }
-            },
+            };
         }
-
     }
 }
 
@@ -179,10 +200,9 @@ fn req_handler<'a>(req: ToSoup<'_>, _outbuf: &'a mut [u8]) -> &'a [u8] {
     let _resp: FromSoup<'_> = match req {
         ToSoup::Control(Control::Reboot) => {
             cortex_m::peripheral::SCB::sys_reset();
-        },
+        }
         _ => todo!(),
     };
-
 
     // match postcard::to_slice_cobs(&resp, outbuf) {
     //     Ok(ser) => ser,
@@ -190,4 +210,10 @@ fn req_handler<'a>(req: ToSoup<'_>, _outbuf: &'a mut [u8]) -> &'a [u8] {
     //         &[0x00]
     //     },
     // }
+}
+
+fn welp<const N: usize>() -> &'static mut [u8; N] {
+    loop {
+        cortex_m::asm::nop();
+    }
 }
