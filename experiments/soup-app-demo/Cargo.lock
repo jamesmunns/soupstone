@@ -649,6 +649,8 @@ dependencies = [
  "embassy-executor",
  "embassy-futures",
  "embassy-nrf",
+ "embassy-sync",
+ "embassy-time",
  "embassy-usb",
  "panic-reset",
  "postcard",

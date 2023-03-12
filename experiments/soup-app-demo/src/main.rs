@@ -1,22 +1,28 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![allow(unused_variables, unused_imports, unused_mut)]
 
 use core::mem;
 
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
+use embassy_futures::select::{select, Either};
 use embassy_nrf::gpio::{Output, Level, OutputDrive};
 use embassy_nrf::peripherals::P0_13;
 use embassy_nrf::usb::vbus_detect::{HardwareVbusDetect, VbusDetect};
 use embassy_nrf::usb::{Driver, Instance};
 use embassy_nrf::{bind_interrupts, pac, peripherals, usb};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::EndpointError;
 use embassy_usb::{Builder, Config};
 use panic_reset as _;
 use postcard::accumulator::{CobsAccumulator, FeedResult};
 use soup_icd::{ToSoup, FromSoup, Control};
+use embassy_time::{Duration, Timer};
+use embassy_sync::pipe::Pipe;
+use embassy_sync::mutex::Mutex;
 
 bind_interrupts!(struct Irqs {
     USBD => usb::InterruptHandler<peripherals::USBD>;
@@ -24,12 +30,21 @@ bind_interrupts!(struct Irqs {
 });
 
 const ACC_SIZE: usize = 512;
+static STDOUT: Pipe<CriticalSectionRawMutex, 256> = Pipe::new();
+
+#[embassy_executor::task]
+async fn run1() {
+    loop {
+        Timer::after(Duration::from_ticks(64000)).await;
+        STDOUT.write(b"hello, world!\r\n").await;
+    }
+}
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
 
-    cortex_m::asm::delay(64_000_000);
+    cortex_m::asm::delay(8_000_000);
 
     let clock: pac::CLOCK = unsafe { mem::transmute(()) };
     let mut led = Output::new(p.P0_13, Level::Low, OutputDrive::Standard);
@@ -95,6 +110,8 @@ async fn main(_spawner: Spawner) {
         }
     };
 
+    spawner.spawn(run1()).ok();
+
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
     join(usb_fut, echo_fut).await;
@@ -115,30 +132,46 @@ async fn minimal<'d, 'acc, T: Instance + 'd, P: VbusDetect + 'd>(
     class: &mut CdcAcmClass<'d, Driver<'d, T, P>>,
 ) -> Result<(), Disconnected> {
     let mut buf = [0; 64];
+    let mut stdout = [0; 32];
     let mut outbuf = [0u8; 512];
 
     let mut acc = CobsAccumulator::<ACC_SIZE>::new();
     loop {
-        let n = class.read_packet(&mut buf).await?;
-        let mut window = &buf[..n];
-
-        'cobs: while !window.is_empty() {
-            use FeedResult::*;
-
-            window = match acc.feed_ref::<ToSoup<'_>>(&window) {
-                Consumed => break 'cobs,
-                OverFull(new_wind) | DeserError(new_wind) => new_wind,
-                Success { data, remaining } => {
-                    let resp = req_handler(data, &mut outbuf);
-
-                    for ch in resp.chunks(64) {
-                        class.write_packet(ch).await?;
+        match select(STDOUT.read(&mut stdout), class.read_packet(&mut buf)).await {
+            Either::First(out) => {
+                if out != 0 {
+                    if let Ok(sern) = postcard::to_slice_cobs(
+                        &FromSoup::Stdout(soup_icd::Managed::Borrowed(&stdout[..out])),
+                        &mut outbuf,
+                    ) {
+                        class.write_packet(sern).await?;
                     }
-
-                    remaining
                 }
-            };
+            },
+            Either::Second(read) => {
+                let n = read?;
+                let mut window = &buf[..n];
+
+                'cobs: while !window.is_empty() {
+                    use FeedResult::*;
+
+                    window = match acc.feed_ref::<ToSoup<'_>>(&window) {
+                        Consumed => break 'cobs,
+                        OverFull(new_wind) | DeserError(new_wind) => new_wind,
+                        Success { data, remaining } => {
+                            let resp = req_handler(data, &mut outbuf);
+
+                            for ch in resp.chunks(64) {
+                                class.write_packet(ch).await?;
+                            }
+
+                            remaining
+                        }
+                    };
+                }
+            },
         }
+
     }
 }
 

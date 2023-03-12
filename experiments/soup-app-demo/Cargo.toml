@@ -39,6 +39,18 @@ rev = "18fe398673f55b07159d01a230910bb9689c1525"
 features = ["msos-descriptor",]
 # optional = true
 
+[dependencies.embassy-time]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = []
+
+[dependencies.embassy-sync]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = []
+
 [dependencies.soup-icd]
 path = "../../shared/soup-icd"
 
