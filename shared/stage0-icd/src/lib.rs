@@ -1,9 +1,7 @@
 #![cfg_attr(not(any(test, feature = "use-std")), no_std)]
 
-use managedbuf::Managed;
+use soup_managed::Managed;
 use serde::{Deserialize, Serialize};
-
-pub mod managedbuf;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "use-defmt", derive(defmt::Format))]

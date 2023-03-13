@@ -1,3 +1,5 @@
+#![cfg_attr(not(any(test, feature = "use-std")), no_std)]
+
 //! A fancy container for owned or borrowed vecs
 //!
 //! So, sometimes you want to use owned types, and have the std

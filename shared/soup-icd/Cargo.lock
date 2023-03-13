@@ -100,20 +100,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "soup-icd"
+version = "0.0.1"
+dependencies = [
+ "defmt",
+ "serde",
+ "soup-managed",
+]
+
+[[package]]
 name = "soup-managed"
 version = "0.1.0"
 dependencies = [
  "defmt",
  "serde",
-]
-
-[[package]]
-name = "stage0-icd"
-version = "1.0.0"
-dependencies = [
- "defmt",
- "serde",
- "soup-managed",
 ]
 
 [[package]]
