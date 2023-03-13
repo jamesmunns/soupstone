@@ -26,7 +26,6 @@ use embassy_usb::{
 use embassy_sync::{mutex::Mutex, pipe::Pipe};
 use embassy_time::{Duration, Timer};
 
-use cortex_m::singleton;
 use panic_reset as _;
 use postcard::accumulator::{CobsAccumulator, FeedResult};
 use soup_icd::{Control, FromSoup, Managed, ToSoup};
@@ -38,6 +37,16 @@ bind_interrupts!(struct Irqs {
 
 const ACC_SIZE: usize = 512;
 static STDOUT: Pipe<ThreadModeRawMutex, 256> = Pipe::new();
+
+fn welp<T>() -> &'static mut T {
+    cortex_m::peripheral::SCB::sys_reset();
+}
+
+macro_rules! singleton {
+    (: $ty:ty = $expr:expr) => {
+        cortex_m::singleton!(VAR: $ty = $expr).unwrap_or_else(welp)
+    };
+}
 
 #[embassy_executor::task]
 async fn run1() {
@@ -104,13 +113,13 @@ async fn main(spawner: Spawner) {
     // It needs some buffers for building the descriptors.
     //
     // Use singletons to reduce stack usage.
-    let device_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
-    let config_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
-    let bos_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
-    let msos_descriptor = singleton!(:[u8; 256] = [0; 256]).unwrap_or_else(welp);
-    let control_buf = singleton!(:[u8; 64] = [0; 64]).unwrap_or_else(welp);
+    let device_descriptor = singleton!(:[u8; 256] = [0; 256]);
+    let config_descriptor = singleton!(:[u8; 256] = [0; 256]);
+    let bos_descriptor = singleton!(:[u8; 256] = [0; 256]);
+    let msos_descriptor = singleton!(:[u8; 256] = [0; 256]);
+    let control_buf = singleton!(:[u8; 64] = [0; 64]);
 
-    let state = singleton!(:State = State::new()).unwrap();
+    let state = singleton!(:State = State::new());
 
     let mut builder = Builder::new(
         driver,
@@ -133,7 +142,7 @@ async fn main(spawner: Spawner) {
 
     let (tx, mut rx) = class.split();
 
-    let tx = &*singleton!(: Mutex<ThreadModeRawMutex, UsbSender> = Mutex::new(tx)).unwrap();
+    let tx = &*singleton!(: Mutex<ThreadModeRawMutex, UsbSender> = Mutex::new(tx));
 
     spawner.spawn(stdout(tx)).ok();
     spawner.spawn(run1()).ok();
@@ -212,8 +221,3 @@ fn req_handler<'a>(req: ToSoup<'_>, _outbuf: &'a mut [u8]) -> &'a [u8] {
     // }
 }
 
-fn welp<const N: usize>() -> &'static mut [u8; N] {
-    loop {
-        cortex_m::asm::nop();
-    }
-}
