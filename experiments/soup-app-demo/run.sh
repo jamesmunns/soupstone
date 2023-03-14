@@ -2,13 +2,12 @@
 
 set -euxo pipefail
 
-# Just in case it's still running
-soup-cli reboot && sleep 1 || :
+soup-cli stage0 poke -a 0x20000000 -f ./target/demo.bin
+soup-cli stage0 bootload -a 0x20000000
+soup-cli nop
 
-# Load the new firmware
-stage0-cli poke -a 0x20000000 -f ./target/demo.bin
-stage0-cli bootload -a 0x20000000
+set +x
 
-sleep 1
+echo "Done."
 
-cat /dev/serial/by-id/usb-OneVariable_Soup_App_Demo_23456789-if00 | xxd
+# cat /dev/serial/by-id/usb-OneVariable_Soup_App_23456789-if00 | xxd

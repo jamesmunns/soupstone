@@ -82,8 +82,6 @@ async fn stdout(tx: &'static Mutex<ThreadModeRawMutex, UsbSender>) {
 async fn main(spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
 
-    cortex_m::asm::delay(8_000_000);
-
     let clock: pac::CLOCK = unsafe { mem::transmute(()) };
     let _led = Output::new(p.P0_13, Level::Low, OutputDrive::Standard);
 
@@ -97,7 +95,7 @@ async fn main(spawner: Spawner) {
     // Create embassy-usb Config
     let mut config = Config::new(0xc0de, 0xcafe);
     config.manufacturer = Some("OneVariable");
-    config.product = Some("Soup App Demo");
+    config.product = Some("Soup App");
     config.serial_number = Some("23456789");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
