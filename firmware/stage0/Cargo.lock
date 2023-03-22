@@ -732,6 +732,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "soup-managed"
+version = "0.1.0"
+dependencies = [
+ "defmt",
+ "serde",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -780,6 +788,7 @@ version = "1.0.0"
 dependencies = [
  "defmt",
  "serde",
+ "soup-managed",
 ]
 
 [[package]]

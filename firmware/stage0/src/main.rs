@@ -29,7 +29,7 @@ use embassy_usb::{
     Builder, Config,
 };
 use postcard::accumulator::{CobsAccumulator, FeedResult};
-use stage0_icd::{Request, Response, Error as IcdError, managedbuf::Managed, PeekBytes, Poked};
+use stage0_icd::{Request, Response, Error as IcdError, Managed, PeekBytes, Poked};
 
 const SCRATCH_SIZE: usize = 224 * 1024;
 const MAGIC_SIZE: usize = 8;

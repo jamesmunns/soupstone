@@ -1,6 +1,6 @@
 #![cfg_attr(not(any(test, feature = "use-std")), no_std)]
 
-use soup_managed::Managed;
+pub use soup_managed::Managed;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
