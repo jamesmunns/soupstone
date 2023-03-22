@@ -1,11 +1,27 @@
 use std::{num::ParseIntError, str::FromStr};
-use clap::{Args, Parser};
+use clap::{Parser, Args};
 
 #[derive(Debug)]
 pub struct Address(pub u32);
 
 #[derive(Debug)]
 pub struct WriteBytes(pub Vec<u8>);
+
+#[derive(Parser, Debug)]
+pub enum Soup {
+    /// Reboot Application
+    Reboot,
+    /// Noop. Useful for ensuring connection
+    Nop,
+    /// Stage0 Loader Commands
+    Stage0(S0Shim),
+}
+
+#[derive(Args, Debug)]
+pub struct S0Shim {
+    #[clap(subcommand)]
+    pub shim: Stage0,
+}
 
 #[derive(Parser, Debug)]
 pub enum Stage0 {

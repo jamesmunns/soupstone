@@ -401,6 +401,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "soup-cli"
+version = "1.0.0"
+dependencies = [
+ "clap",
+ "postcard",
+ "serde",
+ "serialport",
+ "soup-icd",
+ "stage0-icd",
+]
+
+[[package]]
+name = "soup-icd"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "soup-managed",
+]
+
+[[package]]
+name = "soup-managed"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "spin"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,20 +443,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
-name = "stage0-cli"
-version = "1.0.0"
-dependencies = [
- "clap",
- "postcard",
- "serialport",
- "stage0-icd",
-]
-
-[[package]]
 name = "stage0-icd"
 version = "1.0.0"
 dependencies = [
  "serde",
+ "soup-managed",
 ]
 
 [[package]]

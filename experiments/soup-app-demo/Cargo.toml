@@ -1,0 +1,91 @@
+[package]
+edition = "2021"
+name = "soup-app-demo"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["nightly"]
+nightly = [
+    "embassy-executor/nightly",
+    "embassy-nrf/nightly",
+]
+
+[dependencies.embassy-futures]
+version = "0.1.0"
+# path = "../../embassy-futures"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+
+[dependencies.embassy-executor]
+version = "0.1.0"
+# path = "../../embassy-executor"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = ["integrated-timers"]
+
+[dependencies.embassy-nrf]
+version = "0.1.0"
+# path = "../../embassy-nrf"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = ["nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"]
+
+[dependencies.embassy-usb]
+version = "0.1.0"
+# path = "../../embassy-usb"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = ["msos-descriptor",]
+# optional = true
+
+[dependencies.embassy-time]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = []
+
+[dependencies.embassy-sync]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = []
+
+[dependencies.soup-icd]
+path = "../../shared/soup-icd"
+
+[dependencies]
+cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.0"
+panic-reset = "0.1.1"
+postcard = "1.0"
+
+# cargo build/run
+[profile.dev]
+codegen-units = 1
+debug = 2
+debug-assertions = true # <-
+incremental = false
+opt-level = 3 # <-
+overflow-checks = true # <-
+
+# cargo test
+[profile.test]
+codegen-units = 1
+debug = 2
+debug-assertions = true # <-
+incremental = false
+opt-level = 3 # <-
+overflow-checks = true # <-
+
+# cargo build/run --release
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false # <-
+incremental = false
+# NOTE disabled to work around issue rust-lang/rust#90357
+# the bug results in log messages not having location information
+# (the line printed below the log message that contains the file-line location)
+lto = 'fat'
+opt-level = 'z' # <-
