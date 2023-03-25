@@ -15,6 +15,8 @@ pub enum Soup {
     Nop,
     /// Stage0 Loader Commands
     Stage0(S0Shim),
+    /// Connect stdio (and err) to the console
+    Stdio,
 }
 
 #[derive(Args, Debug)]

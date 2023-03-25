@@ -51,7 +51,7 @@ macro_rules! singleton {
 #[embassy_executor::task]
 async fn run1() {
     loop {
-        Timer::after(Duration::from_ticks(64000)).await;
+        Timer::after(Duration::from_ticks(32768)).await;
         STDOUT.write(b"hello, world!\r\n").await;
     }
 }

@@ -47,8 +47,11 @@ features = []
 
 [dependencies.embassy-sync]
 version = "0.1.0"
-git = "https://github.com/embassy-rs/embassy"
-rev = "18fe398673f55b07159d01a230910bb9689c1525"
+# NOTE: using my version to include https://github.com/embassy-rs/embassy/pull/1296
+# git = "https://github.com/embassy-rs/embassy"
+# rev = "18fe398673f55b07159d01a230910bb9689c1525"
+git = "https://github.com/jamesmunns/embassy"
+rev = "4b5581be96f549cbab2f464f4eb5167ee4ab5ed1"
 features = []
 
 [dependencies.soup-icd]

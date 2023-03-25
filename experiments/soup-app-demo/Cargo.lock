@@ -163,7 +163,7 @@ dependencies = [
  "embassy-executor",
  "embassy-hal-common",
  "embassy-macros",
- "embassy-sync",
+ "embassy-sync 0.1.0 (git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525)",
 ]
 
 [[package]]
@@ -171,7 +171,7 @@ name = "embassy-embedded-hal"
 version = "0.1.0"
 source = "git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525#18fe398673f55b07159d01a230910bb9689c1525"
 dependencies = [
- "embassy-sync",
+ "embassy-sync 0.1.0 (git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525)",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0-alpha.9",
  "embedded-hal-async",
@@ -230,7 +230,7 @@ source = "git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a2
 dependencies = [
  "embassy-futures",
  "embassy-net-driver",
- "embassy-sync",
+ "embassy-sync 0.1.0 (git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525)",
 ]
 
 [[package]]
@@ -245,7 +245,7 @@ dependencies = [
  "embassy-cortex-m",
  "embassy-embedded-hal",
  "embassy-hal-common",
- "embassy-sync",
+ "embassy-sync 0.1.0 (git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525)",
  "embassy-time",
  "embassy-usb-driver",
  "embedded-hal 0.2.7",
@@ -273,6 +273,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "embassy-sync"
+version = "0.1.0"
+source = "git+https://github.com/jamesmunns/embassy?rev=4b5581be96f549cbab2f464f4eb5167ee4ab5ed1#4b5581be96f549cbab2f464f4eb5167ee4ab5ed1"
+dependencies = [
+ "cfg-if",
+ "critical-section",
+ "embedded-io",
+ "futures-util",
+ "heapless",
+]
+
+[[package]]
 name = "embassy-time"
 version = "0.1.0"
 source = "git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525#18fe398673f55b07159d01a230910bb9689c1525"
@@ -280,7 +292,7 @@ dependencies = [
  "atomic-polyfill 1.0.1",
  "cfg-if",
  "critical-section",
- "embassy-sync",
+ "embassy-sync 0.1.0 (git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525)",
  "embedded-hal 0.2.7",
  "futures-util",
  "heapless",
@@ -293,7 +305,7 @@ source = "git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a2
 dependencies = [
  "embassy-futures",
  "embassy-net-driver-channel",
- "embassy-sync",
+ "embassy-sync 0.1.0 (git+https://github.com/embassy-rs/embassy?rev=18fe398673f55b07159d01a230910bb9689c1525)",
  "embassy-usb-driver",
  "heapless",
  "ssmarshal",
@@ -649,7 +661,7 @@ dependencies = [
  "embassy-executor",
  "embassy-futures",
  "embassy-nrf",
- "embassy-sync",
+ "embassy-sync 0.1.0 (git+https://github.com/jamesmunns/embassy?rev=4b5581be96f549cbab2f464f4eb5167ee4ab5ed1)",
  "embassy-time",
  "embassy-usb",
  "panic-reset",
