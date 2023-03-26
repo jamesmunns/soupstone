@@ -250,9 +250,9 @@ fn stdio(port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
                             eprint!("{}", String::from_utf8_lossy(r.as_slice()));
                             stderr.flush()?;
                         },
-                        FromSoup::ControlResponse(r) => todo!(),
-                        FromSoup::FromApp(r) => todo!(),
-                        FromSoup::Error(r) => todo!(),
+                        FromSoup::ControlResponse(_r) => todo!(),
+                        FromSoup::FromApp(_r) => todo!(),
+                        FromSoup::Error(_r) => todo!(),
                     }
                     remaining
                 }
