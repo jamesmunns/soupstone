@@ -8,7 +8,7 @@ use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_nrf::{
     bind_interrupts,
-    gpio::{Level, Output, OutputDrive},
+    gpio::{Level, Output, OutputDrive, Pin, AnyPin},
     pac,
     peripherals::{self, USBD},
     usb::{
@@ -68,6 +68,25 @@ async fn run2() {
 }
 
 #[embassy_executor::task]
+async fn run3(mut leds: [Output<'static, AnyPin>; 3]) {
+    let mut idx = 0u32;
+    loop {
+        Timer::after(Duration::from_ticks(32768 / 2)).await;
+        let mut single = idx;
+        leds.iter_mut().for_each(|p| {
+            if (single & 1) == 1 {
+                p.set_low();
+            } else {
+                p.set_high();
+            }
+            single >>= 1;
+        });
+        idx = idx.wrapping_add(1);
+    }
+
+}
+
+#[embassy_executor::task]
 async fn echo() {
     let mut buf = [0u8; 32];
     loop {
@@ -123,7 +142,11 @@ async fn main(spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
 
     let clock: pac::CLOCK = unsafe { mem::transmute(()) };
-    let _led = Output::new(p.P0_13, Level::Low, OutputDrive::Standard);
+    let leds = [
+        Output::new(p.P0_06.degrade(), Level::High, OutputDrive::Standard),
+        Output::new(p.P0_26.degrade(), Level::High, OutputDrive::Standard),
+        Output::new(p.P0_30.degrade(), Level::High, OutputDrive::Standard),
+    ];
 
     // info!("Enabling ext hfosc...");
     clock.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
@@ -186,6 +209,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(stderr(tx)).ok();
     spawner.spawn(run1()).ok();
     spawner.spawn(run2()).ok();
+    spawner.spawn(run3(leds)).ok();
     spawner.spawn(echo()).ok();
 
     // Do stuff with the class!
