@@ -13,7 +13,7 @@ use std::{
     fs::File,
     io::{ErrorKind, Read, Write},
     ops::DerefMut,
-    time::Duration,
+    time::Duration, sync::mpsc::channel,
 };
 
 mod cli;
@@ -182,7 +182,7 @@ fn get_port() -> Result<(PortKind, Box<dyn SerialPort>), FindError> {
     };
 
     let port = serialport::new(&dport.port_name, 115200)
-        .timeout(Duration::from_millis(5))
+        .timeout(Duration::from_millis(16))
         .open()?;
 
     Ok((*kind, port))
@@ -200,13 +200,29 @@ fn stdio(port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
 
     let mut stdout = std::io::stdout();
     let mut stderr = std::io::stderr();
+    let mut stdin = std::io::stdin();
 
-    'outer: loop {
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 32];
+        loop {
+            match stdin.read(&mut buf) {
+                Ok(n) => {
+                    tx.send((&buf[..n]).to_vec()).unwrap();
+                },
+                Err(_) => todo!(),
+            }
+        }
+    });
+
+
+
+    loop {
         let mut buf = match port.read(&mut raw_buf) {
             Ok(0) => todo!(),
             Ok(n) => &raw_buf[..n],
             Err(e) if e.kind() == ErrorKind::TimedOut => {
-                continue 'outer;
+                &[]
             }
             Err(e) => {
                 panic!("{e:?}");
@@ -241,6 +257,11 @@ fn stdio(port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
                     remaining
                 }
             };
+        }
+
+        if let Ok(v) = rx.try_recv() {
+            let msg = ToSoup::Stdin(Managed::Borrowed(&v));
+            send(msg, port).unwrap();
         }
     }
 }

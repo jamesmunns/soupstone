@@ -37,6 +37,8 @@ bind_interrupts!(struct Irqs {
 
 const ACC_SIZE: usize = 512;
 static STDOUT: Pipe<ThreadModeRawMutex, 256> = Pipe::new();
+static STDIN: Pipe<ThreadModeRawMutex, 256> = Pipe::new();
+static STDERR: Pipe<ThreadModeRawMutex, 256> = Pipe::new();
 
 fn welp<T>() -> &'static mut T {
     cortex_m::peripheral::SCB::sys_reset();
@@ -51,8 +53,29 @@ macro_rules! singleton {
 #[embassy_executor::task]
 async fn run1() {
     loop {
-        Timer::after(Duration::from_ticks(32768)).await;
+        Timer::after(Duration::from_ticks(32768 * 5)).await;
         STDOUT.write(b"hello, world!\r\n").await;
+    }
+}
+
+#[embassy_executor::task]
+async fn run2() {
+    Timer::after(Duration::from_ticks(32768 / 4)).await;
+    loop {
+        Timer::after(Duration::from_ticks(12 * 32768)).await;
+        STDERR.write(b"hello, error!\r\n").await;
+    }
+}
+
+#[embassy_executor::task]
+async fn echo() {
+    let mut buf = [0u8; 32];
+    loop {
+        let n = STDIN.read(&mut buf).await;
+        if n != 0 {
+            STDOUT.write(b"Echo: ").await;
+            STDOUT.write(&buf[..n]).await;
+        }
     }
 }
 
@@ -66,14 +89,31 @@ async fn stdout(tx: &'static Mutex<ThreadModeRawMutex, UsbSender>) {
 
     loop {
         let n = STDOUT.read(&mut scratch_in).await;
-        if n == 0 {
-            continue;
+        if n != 0 {
+            let msg = FromSoup::Stdout(Managed::from_borrowed(&scratch_in[..n]));
+            if let Ok(sli) = postcard::to_slice_cobs(&msg, &mut scratch_out) {
+                let mut tx = tx.lock().await;
+                tx.wait_connection().await;
+                tx.write_packet(sli).await.ok();
+            }
         }
-        let msg = FromSoup::Stdout(Managed::from_borrowed(&scratch_in[..n]));
-        if let Ok(sli) = postcard::to_slice_cobs(&msg, &mut scratch_out) {
-            let mut tx = tx.lock().await;
-            tx.wait_connection().await;
-            tx.write_packet(sli).await.ok();
+    }
+}
+
+#[embassy_executor::task]
+async fn stderr(tx: &'static Mutex<ThreadModeRawMutex, UsbSender>) {
+    let mut scratch_in = [0u8; 32];
+    let mut scratch_out = [0u8; 64];
+
+    loop {
+        let n = STDERR.read(&mut scratch_in).await;
+        if n != 0 {
+            let msg = FromSoup::Stderr(Managed::from_borrowed(&scratch_in[..n]));
+            if let Ok(sli) = postcard::to_slice_cobs(&msg, &mut scratch_out) {
+                let mut tx = tx.lock().await;
+                tx.wait_connection().await;
+                tx.write_packet(sli).await.ok();
+            }
         }
     }
 }
@@ -143,10 +183,13 @@ async fn main(spawner: Spawner) {
     let tx = &*singleton!(: Mutex<ThreadModeRawMutex, UsbSender> = Mutex::new(tx));
 
     spawner.spawn(stdout(tx)).ok();
+    spawner.spawn(stderr(tx)).ok();
     spawner.spawn(run1()).ok();
+    spawner.spawn(run2()).ok();
+    spawner.spawn(echo()).ok();
 
     // Do stuff with the class!
-    let echo_fut = async {
+    let soup_comms = async {
         loop {
             rx.wait_connection().await;
             let _ = minimal(&mut rx, tx).await;
@@ -155,7 +198,7 @@ async fn main(spawner: Spawner) {
 
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
-    join(usb_fut, echo_fut).await;
+    join(usb_fut, soup_comms).await;
 }
 
 struct Disconnected {}
@@ -188,12 +231,14 @@ async fn minimal(
                 Consumed => break 'cobs,
                 OverFull(new_wind) | DeserError(new_wind) => new_wind,
                 Success { data, remaining } => {
-                    let resp = req_handler(data, &mut outbuf);
+                    let resp = req_handler(data, &mut outbuf).await;
 
-                    let mut tx = tx.lock().await;
-                    for ch in resp.chunks(64) {
-                        tx.wait_connection().await;
-                        tx.write_packet(ch).await?;
+                    if !resp.is_empty() {
+                        let mut tx = tx.lock().await;
+                        for ch in resp.chunks(64) {
+                            tx.wait_connection().await;
+                            tx.write_packet(ch).await?;
+                        }
                     }
 
                     remaining
@@ -203,19 +248,31 @@ async fn minimal(
     }
 }
 
-fn req_handler<'a>(req: ToSoup<'_>, _outbuf: &'a mut [u8]) -> &'a [u8] {
-    let _resp: FromSoup<'_> = match req {
+async fn req_handler<'a>(req: ToSoup<'_>, outbuf: &'a mut [u8]) -> &'a [u8] {
+    let resp: Option<FromSoup<'_>> = match req {
         ToSoup::Control(Control::Reboot) => {
             cortex_m::peripheral::SCB::sys_reset();
         }
-        _ => todo!(),
+        ToSoup::Control(Control::SendAppInfo) => {
+            None
+        }
+        ToSoup::Stdin(si) => {
+            STDIN.write(si.as_slice()).await;
+            None
+        },
+        ToSoup::ToApp(_) => todo!(),
     };
 
-    // match postcard::to_slice_cobs(&resp, outbuf) {
-    //     Ok(ser) => ser,
-    //     Err(_) => {
-    //         &[0x00]
-    //     },
-    // }
+    if let Some(res) = resp {
+        match postcard::to_slice_cobs(&res, outbuf) {
+            Ok(ser) => ser,
+            Err(_) => {
+                &[0x00]
+            },
+        }
+    } else {
+        &[]
+    }
+
 }
 
