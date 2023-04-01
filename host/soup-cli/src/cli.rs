@@ -1,10 +1,10 @@
 use std::{num::ParseIntError, str::FromStr};
 use clap::{Parser, Args};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Address(pub u32);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WriteBytes(pub Vec<u8>);
 
 #[derive(Parser, Debug)]
@@ -29,10 +29,14 @@ pub struct S0Shim {
 pub enum Stage0 {
     /// Peek
     Peek(Peek),
+    /// Peek
+    FlashPeek(Peek),
     /// Poke
     Poke(Poke),
+    /// Poke
+    FlashPoke(Poke),
     /// Bootload
-    Bootload(Bootload)
+    Bootload(Bootload),
 }
 
 #[derive(Args, Debug)]
@@ -50,7 +54,7 @@ pub struct Peek {
     pub file: Option<String>,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct Poke {
     /// The address to write to.
     #[clap(short = 'a')]

@@ -24,6 +24,17 @@ pub enum Request<'a> {
     Reboot,
     Bootload {
         addr: u32,
+    },
+
+    // Flash
+    PeekBytesFlash {
+        addr: usize,
+        len: usize,
+    },
+    FlashCopy {
+        ram_start: usize,
+        flash_start: usize,
+        len: usize,
     }
 }
 
@@ -39,7 +50,10 @@ pub enum Error {
     RangeTooLarge {
         request: usize,
         max: usize,
-    }
+    },
+    UnalignedFlashAddr(UnalignedFlashAddr),
+    CantOverwriteBootloader,
+    FlashCopyFailed,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,11 +72,21 @@ pub struct Poked {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "use-defmt", derive(defmt::Format))]
+pub struct UnalignedFlashAddr{
+    pub addr: usize,
+    pub align: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "use-defmt", derive(defmt::Format))]
 pub enum Response<'a> {
     #[serde(borrow)]
     PeekBytes(PeekBytes<'a>),
     Poked(Poked),
     MagicCleared,
+    #[serde(borrow)]
+    PeekBytesFlash(PeekBytes<'a>),
+    FlashCopied,
 }
 
 #[cfg(feature = "use-std")]
@@ -77,8 +101,10 @@ impl<'a> Response<'a> {
     pub fn to_owned(&self) -> Response<'static> {
         match self {
             Response::PeekBytes(pb) => Response::PeekBytes(pb.to_owned()),
+            Response::PeekBytesFlash(pbf) => Response::PeekBytesFlash(pbf.to_owned()),
             Response::Poked(Poked { addr }) => Response::Poked(Poked { addr: *addr }),
             Response::MagicCleared => Response::MagicCleared,
+            Response::FlashCopied => Response::FlashCopied,
         }
     }
 }

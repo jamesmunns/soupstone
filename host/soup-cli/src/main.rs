@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         },
         Soup::Stage0(shim) => match shim.shim {
             Stage0::Peek(cmd) => peek(cmd, port.deref_mut()),
-            Stage0::Poke(cmd) => poke(cmd, port.deref_mut()),
+            Stage0::Poke(cmd) => poke(cmd, port.deref_mut()).map(drop),
             Stage0::Bootload(cmd) => {
                 send(
                     Request::Bootload {
@@ -99,9 +99,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("Sent bootload command.");
                 Ok(())
             }
+            Stage0::FlashPeek(cmd) => flash_peek(cmd, port.deref_mut()),
+            Stage0::FlashPoke(cmd) => flash_poke(cmd, port.deref_mut()),
         },
         Soup::Stdio => stdio(port.deref_mut()),
     }?;
+
+    Ok(())
+}
+
+fn flash_poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
+    // First, poke the data into RAM, but start at the origin.
+    let mut ram_poke = cmd.clone();
+    ram_poke.address = cli::Address(0x2000_0000);
+    let len = poke(ram_poke, port)?;
+
+    // Then, send a ram copy command
+    let copy_cmd = Request::FlashCopy { ram_start: 0x2000_0000, flash_start: cmd.address.0 as usize, len };
+    send(copy_cmd, port)?;
+
+    // temporary,
 
     Ok(())
 }
@@ -315,6 +332,50 @@ where
     }
 }
 
+fn flash_peek(cmd: Peek, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
+    // Slightly less than the 64 byte packet limit
+    const CHUNK_SZ: usize = 256;
+
+    let mut data = Vec::new();
+    let mut idx = cmd.address.0 as usize;
+    let mut remain = cmd.count;
+
+    while remain != 0 {
+        let chunk = min(CHUNK_SZ, remain);
+        remain -= chunk;
+        send(
+            Request::PeekBytesFlash {
+                addr: idx,
+                len: chunk,
+            },
+            port,
+        )?;
+        let resp = recv_s0::<_, PeekBytes<'static>>(
+            |r| match r {
+                S0Response::PeekBytesFlash(t) if t.addr == idx => Some(t.to_owned()),
+                _ => None,
+            },
+            port,
+        )?;
+        data.extend_from_slice(resp.val.as_slice());
+        idx += chunk;
+    }
+
+    if let Some(f) = cmd.file {
+        let mut file = File::create(f)?;
+        file.write_all(&data)?;
+    } else {
+        data.chunks(16).for_each(|ch| {
+            for b in ch {
+                print!("{b:02X} ");
+            }
+            println!();
+        });
+    }
+
+    Ok(())
+}
+
 fn peek(cmd: Peek, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
     // Slightly less than the 64 byte packet limit
     const CHUNK_SZ: usize = 256;
@@ -359,7 +420,7 @@ fn peek(cmd: Peek, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
+fn poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<usize, Box<dyn Error>> {
     // Slightly less than the 64 byte packet limit
     const CHUNK_SZ: usize = 256;
 
@@ -378,7 +439,8 @@ fn poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
     };
 
     let mut remain = &data[..];
-    println!("len: {}", remain.len());
+    let ttl = remain.len();
+    println!("len: {}", ttl);
 
     while !remain.is_empty() {
         let chunk_len = min(CHUNK_SZ, remain.len());
@@ -401,5 +463,5 @@ fn poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
         idx += chunk_len;
     }
 
-    Ok(())
+    Ok(ttl)
 }

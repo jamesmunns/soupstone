@@ -12,16 +12,17 @@ use cortex_m::{singleton, interrupt, peripheral::SCB};
 #[cfg(feature = "use-defmt")]
 use {defmt_rtt as _, panic_probe as _};
 
+use embassy_time::{Timer, Duration};
 #[cfg(feature = "small")]
 use panic_reset as _;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_nrf::{
-    bind_interrupts, pac, peripherals, usb,
+    bind_interrupts, pac, peripherals::{self, NVMC}, usb,
     usb::{
         vbus_detect::{HardwareVbusDetect, VbusDetect},
         Driver, Instance,
-    },
+    }, gpio::{Output, Level, OutputDrive, Pin, AnyPin}, nvmc::Nvmc,
 };
 use embassy_usb::{
     class::cdc_acm::{CdcAcmClass, State},
@@ -29,10 +30,11 @@ use embassy_usb::{
     Builder, Config,
 };
 use postcard::accumulator::{CobsAccumulator, FeedResult};
-use stage0_icd::{Request, Response, Error as IcdError, Managed, PeekBytes, Poked};
+use stage0_icd::{Request, Response, Error as IcdError, Managed, PeekBytes, Poked, UnalignedFlashAddr};
+use embedded_storage::nor_flash::{ErrorType, NorFlash};
 
 const SCRATCH_SIZE: usize = 224 * 1024;
-const MAGIC_SIZE: usize = 8;
+const MAGIC_SIZE: usize = 64;
 const ACC_SIZE: usize = 512;
 
 #[cfg(feature = "use-defmt")]
@@ -149,8 +151,18 @@ bind_interrupts!(struct Irqs {
     POWER_CLOCK => usb::vbus_detect::InterruptHandler;
 });
 
+#[embassy_executor::task]
+async fn blinky(mut led: Output<'static, AnyPin>) {
+    loop {
+        Timer::after(Duration::from_ticks(32768 / 2)).await;
+        led.set_high();
+        Timer::after(Duration::from_ticks(32768 / 2)).await;
+        led.set_low();
+    }
+}
+
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let (magic_1, magic_2) = unsafe {
         let m = MAGIC.as_ptr().cast::<u32>();
         let ret = (m.read_unaligned(), m.add(1).read_unaligned());
@@ -176,6 +188,9 @@ async fn main(_spawner: Spawner) {
     let nvmc: pac::NVMC = unsafe { mem::transmute(()) };
     nvmc.icachecnf.write(|w| w.cacheen().set_bit());
     cortex_m::asm::isb();
+
+    // Set the red led on to show bootloader mode
+    let led = Output::new(p.P0_26.degrade(), Level::Low, OutputDrive::Standard);
 
     s0log!(info, "Enabling ext hfosc...");
     clock.tasks_hfclkstart.write(|w| unsafe { w.bits(1) });
@@ -239,6 +254,8 @@ async fn main(_spawner: Spawner) {
             s0log!(info, "Disconnected");
         }
     };
+
+    spawner.spawn(blinky(led)).ok();
 
     // Run everything concurrently.
     // If we had made everything `'static` above instead, we could do this using separate tasks instead.
@@ -322,16 +339,66 @@ fn req_handler<'a>(req: Request<'_>, outbuf: &'a mut [u8]) -> &'a [u8] {
             // o7
             interrupt::disable();
             SCB::sys_reset();
-        }
+        },
+        Request::PeekBytesFlash { addr, len } => {
+            const MAX_ADDR: usize = 1024 * 1024;
 
-        // Unimplemented
-        // Request::PeekU16 { addr } => todo!(),
-        // Request::PeekU32 { addr } => todo!(),
-        // Request::PokeU16 { addr, val } => todo!(),
-        // Request::PokeU32 { addr, val } => todo!(),
-        // Request::ClearMagic => todo!(),
-        // Request::Reboot => todo!(),
-        _ => todo!()
+            if len > membuf.len() {
+                Err(IcdError::RangeTooLarge {
+                    request: len,
+                    max: membuf.len(),
+                })
+            } else if addr.saturating_add(len) > MAX_ADDR {
+                Err(IcdError::AddressOutOfRange { request: addr, len, min: 0, max: MAX_ADDR })
+            } else {
+                let slice = &mut membuf[..len];
+                let src = addr as *const u8;
+                slice.iter_mut().enumerate().for_each(|(i, b)| {
+                    *b = unsafe { src.add(i).read_volatile() };
+                });
+                Ok(Response::PeekBytesFlash(PeekBytes { addr: addr, val: Managed::from_borrowed(slice) }))
+            }
+        }
+        Request::ClearMagic => todo!(),
+        Request::Reboot => todo!(),
+        Request::FlashCopy { ram_start, flash_start, len } => {
+            SCRATCH.contains(ram_start, len).and_then(|ptr| {
+                if (flash_start & (4096 - 1)) != 0 {
+                    Err(IcdError::UnalignedFlashAddr(UnalignedFlashAddr { addr: flash_start, align: 4096 }))
+                } else if flash_start < (32 * 1024) {
+                    Err(IcdError::CantOverwriteBootloader)
+                } else {
+                    let mut nvmc = Nvmc::new(unsafe { NVMC::steal() });
+                    let mut idx = flash_start as u32;
+
+                    let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
+                    let res = slice
+                        .chunks(Nvmc::ERASE_SIZE)
+                        .try_for_each(|ch| {
+                            nvmc.erase(idx, idx + (Nvmc::ERASE_SIZE as u32))?;
+                            let aligned_end = ch.len() & !(Nvmc::WRITE_SIZE - 1);
+                            let (aligned, unaligned) = ch.split_at(aligned_end);
+                            nvmc.write(idx, aligned)?;
+
+                            if !unaligned.is_empty() {
+                                let mut extra = [0xFF; Nvmc::WRITE_SIZE];
+                                extra[..unaligned.len()].copy_from_slice(unaligned);
+                                nvmc.write(idx + (aligned.len() as u32), &extra)?;
+                            }
+
+                            idx += ch.len() as u32;
+
+                            Result::<_, <Nvmc as ErrorType>::Error>::Ok(())
+                        });
+
+                    match res {
+                        Ok(_) => Ok(Response::FlashCopied),
+                        Err(_) => Err(IcdError::FlashCopyFailed),
+                    }
+
+                }
+            })
+        },
     };
 
     match postcard::to_slice_cobs(&resp, outbuf) {
