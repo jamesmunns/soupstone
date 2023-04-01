@@ -4,8 +4,8 @@ use postcard::{
     to_stdvec_cobs,
 };
 use serialport::SerialPort;
-use soup_icd::{Managed, ToSoup};
-use stage0_icd::{Error as IcdError, PeekBytes, Poked, Request, Response};
+use soup_icd::{Managed, ToSoup, FromSoup};
+use stage0_icd::{Error as IcdError, PeekBytes, Poked, Request, Response as S0Response};
 use std::{
     cmp::min,
     error::Error,
@@ -13,7 +13,7 @@ use std::{
     fs::File,
     io::{ErrorKind, Read, Write},
     ops::DerefMut,
-    time::Duration,
+    time::Duration, sync::mpsc::channel,
 };
 
 mod cli;
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut last_err: Option<FindError> = None;
 
     let looking_for = match cmd {
-        Soup::Reboot | Soup::Nop => PortKind::SoupApp,
+        Soup::Reboot | Soup::Nop | Soup::Stdio => PortKind::SoupApp,
         Soup::Stage0(_) => PortKind::Stage0,
     };
 
@@ -100,6 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Ok(())
             }
         },
+        Soup::Stdio => stdio(port.deref_mut()),
     }?;
 
     Ok(())
@@ -181,22 +182,100 @@ fn get_port() -> Result<(PortKind, Box<dyn SerialPort>), FindError> {
     };
 
     let port = serialport::new(&dport.port_name, 115200)
-        .timeout(Duration::from_millis(5))
+        .timeout(Duration::from_millis(16))
         .open()?;
 
     Ok((*kind, port))
 }
 
+fn stdio(port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
+    println!("====================");
+    println!("Forwarding Stdio... ");
+    println!("====================");
+
+
+    let mut acc = CobsAccumulator::<512>::new();
+
+    let mut raw_buf = [0u8; 32];
+
+    let mut stdout = std::io::stdout();
+    let mut stderr = std::io::stderr();
+    let mut stdin = std::io::stdin();
+
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 32];
+        loop {
+            match stdin.read(&mut buf) {
+                Ok(n) => {
+                    tx.send((&buf[..n]).to_vec()).unwrap();
+                },
+                Err(_) => todo!(),
+            }
+        }
+    });
+
+
+
+    loop {
+        let mut buf = match port.read(&mut raw_buf) {
+            Ok(0) => todo!(),
+            Ok(n) => &raw_buf[..n],
+            Err(e) if e.kind() == ErrorKind::TimedOut => {
+                &[]
+            }
+            Err(e) => {
+                panic!("{e:?}");
+            }
+        };
+
+        'cobs: while !buf.is_empty() {
+            buf = match acc.feed_ref::<FromSoup<'_>>(buf) {
+                FeedResult::Consumed => break 'cobs,
+                FeedResult::OverFull(new_wind) => {
+                    println!("OVERFULL ERR");
+                    new_wind
+                },
+                FeedResult::DeserError(new_wind) => {
+                    println!("DESER ERR");
+                    new_wind
+                },
+                FeedResult::Success { data, remaining } => {
+                    match data {
+                        FromSoup::Stdout(r) => {
+                            print!("{}", String::from_utf8_lossy(r.as_slice()));
+                            stdout.flush()?;
+                        },
+                        FromSoup::Stderr(r) => {
+                            eprint!("{}", String::from_utf8_lossy(r.as_slice()));
+                            stderr.flush()?;
+                        },
+                        FromSoup::ControlResponse(_r) => todo!(),
+                        FromSoup::FromApp(_r) => todo!(),
+                        FromSoup::Error(_r) => todo!(),
+                    }
+                    remaining
+                }
+            };
+        }
+
+        if let Ok(v) = rx.try_recv() {
+            let msg = ToSoup::Stdin(Managed::Borrowed(&v));
+            send(msg, port).unwrap();
+        }
+    }
+}
+
 fn send<T: serde::Serialize>(cmd: T, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
     let sercmd = to_stdvec_cobs(&cmd)?;
-    port.write(&[0x00])?;
-    port.write(&sercmd)?;
+    port.write_all(&[0x00])?;
+    port.write_all(&sercmd)?;
     Ok(())
 }
 
 fn recv_s0<F, T>(matcher: F, port: &mut dyn SerialPort) -> Result<T, Box<dyn Error>>
 where
-    F: Fn(&Response<'_>) -> Option<T>,
+    F: Fn(&S0Response<'_>) -> Option<T>,
 {
     let mut acc = CobsAccumulator::<512>::new();
 
@@ -215,7 +294,7 @@ where
         };
 
         'cobs: while !buf.is_empty() {
-            buf = match acc.feed_ref::<Result<Response<'_>, IcdError>>(&buf) {
+            buf = match acc.feed_ref::<Result<S0Response<'_>, IcdError>>(buf) {
                 FeedResult::Consumed => break 'cobs,
                 FeedResult::OverFull(new_wind) => new_wind,
                 FeedResult::DeserError(new_wind) => new_wind,
@@ -256,7 +335,7 @@ fn peek(cmd: Peek, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
         )?;
         let resp = recv_s0::<_, PeekBytes<'static>>(
             |r| match r {
-                Response::PeekBytes(t) if t.addr == idx => Some(t.to_owned()),
+                S0Response::PeekBytes(t) if t.addr == idx => Some(t.to_owned()),
                 _ => None,
             },
             port,
@@ -266,7 +345,7 @@ fn peek(cmd: Peek, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(f) = cmd.file {
-        let mut file = File::create(&f)?;
+        let mut file = File::create(f)?;
         file.write_all(&data)?;
     } else {
         data.chunks(16).for_each(|ch| {
@@ -314,7 +393,7 @@ fn poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>> {
         )?;
         let _ = recv_s0::<_, Poked>(
             |r| match r {
-                Response::Poked(t) if t.addr == idx => Some(Poked { addr: t.addr }),
+                S0Response::Poked(t) if t.addr == idx => Some(Poked { addr: t.addr }),
                 _ => None,
             },
             port,
