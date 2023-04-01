@@ -1,0 +1,42 @@
+[package]
+name = "soup-stuff"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies.embassy-executor]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+features = ["nightly", "integrated-timers"]
+
+[dependencies.embassy-nrf]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+features = ["nightly", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"]
+
+[dependencies.embassy-usb]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+features = ["msos-descriptor",]
+
+[dependencies.embassy-time]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+features = []
+
+[dependencies.embassy-sync]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+features = []
+
+[dependencies.soup-icd]
+path = "../../shared/soup-icd"
+
+[dependencies]
+cortex-m = { version = "0.7.6", features = ["critical-section-single-core"] }
+panic-reset = "0.1.1"
+postcard = "1.0"

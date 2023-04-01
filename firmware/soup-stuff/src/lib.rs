@@ -9,8 +9,7 @@ use embassy_nrf::{
     peripherals::{self, USBD},
     usb::{self, vbus_detect::HardwareVbusDetect, Driver},
 };
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::{mutex::Mutex, pipe::Pipe};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, mutex::Mutex, pipe::Pipe};
 use embassy_usb::{
     class::cdc_acm::{CdcAcmClass, Receiver, Sender, State},
     driver::EndpointError,
@@ -20,6 +19,14 @@ use embassy_usb::{
 use panic_reset as _;
 use postcard::accumulator::{CobsAccumulator, FeedResult};
 use soup_icd::{Control, FromSoup, Managed, ToSoup};
+
+pub mod embassy {
+    pub use embassy_executor;
+    pub use embassy_nrf;
+    pub use embassy_usb;
+    pub use embassy_time;
+    pub use embassy_sync;
+}
 
 const ACC_SIZE: usize = 512;
 static STDOUT: Pipe<ThreadModeRawMutex, 256> = Pipe::new();

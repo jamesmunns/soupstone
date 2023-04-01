@@ -2,10 +2,15 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-use embassy_executor::Spawner;
-use embassy_nrf::gpio::{AnyPin, Level, Output, OutputDrive, Pin};
-use embassy_time::{Duration, Timer};
-use soup_app_demo::{
+use soup_stuff::{
+    embassy::{
+        embassy_executor::Spawner,
+        embassy_nrf::{
+            self,
+            gpio::{AnyPin, Level, Output, OutputDrive, Pin},
+        },
+        embassy_time::{Duration, Timer},
+    },
     soup_mgr,
     stdio::{stderr, stdin, stdout},
 };
@@ -37,7 +42,7 @@ async fn run1() {
 
 #[embassy_executor::task]
 async fn run2() {
-    Timer::after(Duration::from_ticks(32768)).await;
+    Timer::after(Duration::from_ticks(40000)).await;
     loop {
         Timer::after(Duration::from_ticks(12 * 32768)).await;
         stderr().write_bytes_all(b"hello, error!\r\n").await;
