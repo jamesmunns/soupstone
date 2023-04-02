@@ -1,25 +1,46 @@
-# It's something
+# Soupstone
 
-## Current repro steps
+## Current demo step
+
+You need a Seeed XIAO nRF52.
 
 ```bash
-# build the demo app
-cd experiments/stage0-ram-payload/
-cargo objcopy --release -- -O binary demo.bin
-cp ./demo.bin ../../host/stage0-cli/demo.bin
+# Install the Soup CLI
+cd host/soup-cli
+cargo install -f --path .
 
-# Flash the stage0 loader
-cd ../../firmware/stage0/
-cargo run --release --features=small
+# Build the test application
+cd ../../experiments/soup-app-demo
+cargo objcopy --release \
+    -- -O binary ./target/demo.bin
 
-# hit control-c, hit the reset button on the board
-# ...
+# Place it into RAM
+soup-cli stage0 poke \
+    -a 0x20000000 \
+    -f ./target/demo.bin
 
-# Run the loader app
-cd ../../host/stage0-cli/
-cargo run --release -- poke -a 0x20000000 -f demo.bin
-cargo run --release -- bootload -a 0x20000000
+# Tell the bootloader to run the app
+soup-cli stage0 bootload \
+    -a 0x20000000
 
-# Open up the tty, typing echos and makes the led blink
-screen /dev/serial/by-id/usb-Embassy_USB-serial_example_12345678-if00
+# Connect to stdin, stderr, and stdout
+soup-cli stdio
+```
+
+## Doin a release
+
+```bash
+# Stage 0 bootloader
+cd firmware/stage0
+cargo objcopy --release --features=small \
+    -- -O binary ./target/stage0.bin
+
+# Factory image
+cd ../../experiments/xiao-init-stage-minus-1
+cp ../../firmware/stage0/target/stage0.bin .
+./generate-uf2.sh
+
+# Make sure the CLI builds
+cd ../../host/soup-cli
+cargo build --release
 ```

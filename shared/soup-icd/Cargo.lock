@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "soup-icd"
-version = "0.0.1"
+version = "2.0.0"
 dependencies = [
  "defmt",
  "serde",

@@ -27,15 +27,15 @@ pub struct S0Shim {
 
 #[derive(Parser, Debug)]
 pub enum Stage0 {
-    /// Peek
+    /// Read from RAM
     Peek(Peek),
-    /// Peek
+    /// Read from Flash
     FlashPeek(Peek),
-    /// Poke
+    /// Write to RAM
     Poke(Poke),
-    /// Poke
+    /// Write to Flash
     FlashPoke(Poke),
-    /// Bootload
+    /// Reboot to loaded firmware
     Bootload(Bootload),
 }
 

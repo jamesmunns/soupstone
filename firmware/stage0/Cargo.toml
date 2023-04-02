@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
 name = "stage0"
-version = "1.0.0"
+version = "2.0.0"
 license = "MIT OR Apache-2.0"
 
 [features]
@@ -63,7 +63,7 @@ features = ["critical-section-single-core", "inline-asm"]
 
 [dependencies.stage0-icd]
 path = "../../shared/stage0-icd"
-version = "1.0.0"
+version = "2.0.0"
 
 [dependencies.embedded-storage]
 version = "0.3"

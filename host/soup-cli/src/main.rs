@@ -112,13 +112,24 @@ fn flash_poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<(), Box<dyn Error>
     // First, poke the data into RAM, but start at the origin.
     let mut ram_poke = cmd.clone();
     ram_poke.address = cli::Address(0x2000_0000);
+    println!(" -> Sending to RAM...");
     let len = poke(ram_poke, port)?;
 
     // Then, send a ram copy command
     let copy_cmd = Request::FlashCopy { ram_start: 0x2000_0000, flash_start: cmd.address.0 as usize, len };
     send(copy_cmd, port)?;
 
-    // temporary,
+    println!(" -> Sent RAM->Flash copy command");
+
+    let _ = recv_s0::<_, ()>(
+        |r| match r {
+            S0Response::FlashCopied => Some(()),
+            _ => None,
+        },
+        port,
+    )?;
+
+    println!(" -> Completed!");
 
     Ok(())
 }
@@ -440,7 +451,7 @@ fn poke(cmd: Poke, port: &mut dyn SerialPort) -> Result<usize, Box<dyn Error>> {
 
     let mut remain = &data[..];
     let ttl = remain.len();
-    println!("len: {}", ttl);
+    println!("   -> len: {}", ttl);
 
     while !remain.is_empty() {
         let chunk_len = min(CHUNK_SZ, remain.len());
