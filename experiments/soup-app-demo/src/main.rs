@@ -28,6 +28,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(soup_mgr(p.USBD)).ok();
     spawner.spawn(run1()).ok();
     spawner.spawn(run2()).ok();
+    spawner.spawn(echo()).ok();
     spawner.spawn(run3(leds)).ok();
 }
 

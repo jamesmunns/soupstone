@@ -13,6 +13,7 @@ features = ["nightly", "integrated-timers"]
 
 [dependencies.soup-icd]
 path = "../../shared/soup-icd"
+version = "2.0.0"
 
 [dependencies.soup-stuff]
 path = "../../firmware/soup-stuff"
