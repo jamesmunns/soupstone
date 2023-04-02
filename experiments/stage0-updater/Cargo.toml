@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
-name = "stage0"
-version = "2.0.0"
+name = "xiao-init-stage-minus-1"
+version = "1.0.0"
 license = "MIT OR Apache-2.0"
 
 [features]
@@ -10,71 +10,52 @@ nightly = [
     "embassy-executor/nightly",
     "embassy-nrf/nightly",
 ]
-use-defmt = [
-    "defmt",
-    "defmt-rtt",
-    "panic-probe",
-    "embassy-executor/defmt",
-    "embassy-nrf/defmt",
-    "embassy-usb/defmt",
-    "stage0-icd/use-defmt",
-]
-small = [
-    "panic-reset",
-]
 
 [dependencies.embassy-futures]
 version = "0.1.0"
 # path = "../../embassy-futures"
 git = "https://github.com/embassy-rs/embassy"
-rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
 
 [dependencies.embassy-executor]
 version = "0.1.0"
 # path = "../../embassy-executor"
 git = "https://github.com/embassy-rs/embassy"
-rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
 features = ["integrated-timers"]
 
 [dependencies.embassy-nrf]
 version = "0.1.0"
 # path = "../../embassy-nrf"
 git = "https://github.com/embassy-rs/embassy"
-rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
-features = ["nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"]
-
-[dependencies.embassy-usb]
-version = "0.1.0"
-# path = "../../embassy-usb"
-git = "https://github.com/embassy-rs/embassy"
-rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
-features = ["msos-descriptor"]
-# optional = true
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = [
+    "nrf52840",
+    "time-driver-rtc1",
+    "gpiote",
+    "unstable-pac",
+    "time",
+]
 
 [dependencies.embassy-time]
 version = "0.1.0"
 git = "https://github.com/embassy-rs/embassy"
-rev = "7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
 features = []
 
-[dependencies.cortex-m]
-version = "0.7.6"
-features = ["critical-section-single-core", "inline-asm"]
-
-[dependencies.stage0-icd]
-path = "../../shared/stage0-icd"
-version = "2.0.0"
+[dependencies.embassy-sync]
+version = "0.1.0"
+git = "https://github.com/embassy-rs/embassy"
+rev = "18fe398673f55b07159d01a230910bb9689c1525"
+features = []
 
 [dependencies.embedded-storage]
 version = "0.3"
 
 [dependencies]
-defmt = { version = "0.3", optional = true }
-defmt-rtt = { version = "0.4", optional = true }
+cortex-m = { version = "0.7.6", features = ["critical-section-single-core", "inline-asm"] }
 cortex-m-rt = "0.7.0"
-panic-probe = { version = "0.3", features = ["print-defmt"], optional = true }
-panic-reset = { version = "0.1", optional = true }
-postcard = "1.0"
+panic-reset = "0.1.1"
 
 # cargo build/run
 [profile.dev]

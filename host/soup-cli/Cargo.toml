@@ -1,6 +1,6 @@
 [package]
 name = "soup-cli"
-version = "1.0.0"
+version = "2.0.0"
 description = ""
 repository = ""
 authors = [
@@ -23,6 +23,7 @@ serde = "1.0"
 [dependencies.soup-icd]
 path = "../../shared/soup-icd"
 features = ["use-std"]
+version = "2.0.0"
 
 [dependencies.stage0-icd]
 path = "../../shared/stage0-icd"
