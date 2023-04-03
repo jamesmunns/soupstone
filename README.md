@@ -2,29 +2,36 @@
 
 ## Current demo step
 
-You need a Seeed XIAO nRF52.
+You need a Seeed XIAO nRF52. It needs to have the stage0 bootloader on it.
+
+### Flashing the soupstone bootloader
+
+> NOTE: This removes the existing bootloader! This can be undone, but there
+> is no documentation on how to do this yet. You may need to use an SWD
+> debugger to replace the original bootloader!
+
+If you have a XIAO nRF52 fresh out of the box, grab the `minus-1.uf2` file from
+the [releases] page, and copy it to the flash drive that appears when you plug
+in your XIAO. It'll disappear, and you can then run the commands below.
+
+The board should start blinking red, and appear as a USB-Serial device on your
+machine.
+
+[releases]: https://github.com/jamesmunns/soupstone/releases
+
+### Actual Demo
 
 ```bash
 # Install the Soup CLI
 cd host/soup-cli
 cargo install -f --path .
 
-# Build the test application
+# Build the test application, place it into RAM, tell the bootloader
+# to run the app, and connect to stdin, stderr, and stdout.
+#
+# Uses cargo to build, then executes `soup-cli run ELF_FILE`.
 cd ../../experiments/soup-app-demo
-cargo objcopy --release \
-    -- -O binary ./target/demo.bin
-
-# Place it into RAM
-soup-cli stage0 poke \
-    -a 0x20000000 \
-    -f ./target/demo.bin
-
-# Tell the bootloader to run the app
-soup-cli stage0 bootload \
-    -a 0x20000000
-
-# Connect to stdin, stderr, and stdout
-soup-cli stdio
+cargo run --release
 ```
 
 ## Doin a release
