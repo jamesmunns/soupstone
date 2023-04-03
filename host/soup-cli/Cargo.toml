@@ -19,6 +19,7 @@ serialport = "4.0.1"
 clap = { version = "3.0.14", features = ["derive"] }
 postcard = { version = "1.0", features = ["use-std"] }
 serde = "1.0"
+object = { version = "0.30", features = ["read", "std"] }
 
 [dependencies.soup-icd]
 path = "../../shared/soup-icd"

@@ -17,6 +17,13 @@ pub enum Soup {
     Stage0(S0Shim),
     /// Connect stdio (and err) to the console
     Stdio,
+    /// Run
+    Run(Run)
+}
+
+#[derive(Args, Debug)]
+pub struct Run {
+    pub elf_path: String,
 }
 
 #[derive(Args, Debug)]
