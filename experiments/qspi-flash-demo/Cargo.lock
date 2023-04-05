@@ -152,6 +152,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ekv"
+version = "0.1.0"
+source = "git+https://github.com/embassy-rs/ekv?rev=5669092c57aafc8d3d552b94a1a3a0ea85896a8c#5669092c57aafc8d3d552b94a1a3a0ea85896a8c"
+dependencies = [
+ "embassy-sync",
+ "heapless",
+]
+
+[[package]]
 name = "embassy-cortex-m"
 version = "0.1.0"
 source = "git+https://github.com/embassy-rs/embassy?rev=7a841b58d127cc6d22c8895197d3f4d4c0974ad7#7a841b58d127cc6d22c8895197d3f4d4c0974ad7"
@@ -566,9 +575,11 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
+ "ekv",
  "embassy-executor",
  "heapless",
  "postcard",
+ "rand_core",
  "soup-icd",
  "soup-stuff",
 ]
