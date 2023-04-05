@@ -1,0 +1,5 @@
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+runner = "soup-cli run"
+
+[build]
+target = "thumbv7em-none-eabi"
